@@ -1,0 +1,1 @@
+Tutaj trafią pliki JSON wygenerowane przez skrypty (terc_dict.json, simc_dict.json, itp.).
