@@ -6,13 +6,11 @@ from pathlib import Path
 # Ścieżka do zapisu
 SAVE_PATH = Path(__file__).parent.parent / "app" / "data" / "map_hydro.json"
 
-
 def normalize(text):
     if not text: return ""
     text = text.lower()
     text = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
     return text.strip()
-
 
 def main():
     print("Pobieranie stacji hydrologicznych z IMGW...")
@@ -31,8 +29,8 @@ def main():
     for station in data:
         # station wygląda tak: {"id_stacji": "150190060", "stacja": "Annopol", "rzeka": "Wisła", ...}
         stacja_id = station['id_stacji']
-        nazwa_stacji = normalize(station['stacja'])  # np. annopol
-        nazwa_rzeki = normalize(station['rzeka'])  # np. wisla
+        nazwa_stacji = normalize(station['stacja']) # np. annopol
+        nazwa_rzeki = normalize(station['rzeka'])   # np. wisla
 
         # Mapujemy RZEKĘ na ID stacji (uwaga: rzeka ma wiele stacji, nadpisujemy - to uproszczenie)
         # Lepsza metoda: zapamiętać listę stacji dla rzeki, ale tutaj robimy prosto:
@@ -51,7 +49,6 @@ def main():
         json.dump(hydro_map, f, indent=2)
 
     print(f"Gotowe! Zapisano {len(hydro_map)} kluczy mapowania w {SAVE_PATH}")
-
 
 if __name__ == "__main__":
     main()

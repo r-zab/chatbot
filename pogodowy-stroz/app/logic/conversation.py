@@ -1,114 +1,137 @@
 from transitions.extensions.asyncio import AsyncMachine
-from app.logic.nlp import recognize_intent, extract_entities
+from app.logic.nlp import NLPService
 from app.services.data_service import DataService
-
 
 class ChatbotLogic:
     def __init__(self, session_id):
         self.session_id = session_id
         self.data_service = DataService()
+        self.nlp_service = NLPService()
+
         self.current_intent = None
         self.current_location_id = None
-        self.response = "Cześć! Jestem Pogodowym Stróżem. Zapytaj mnie o pogodę (np. w Poznaniu) lub ostrzeżenia."
-        self.processing_result = None
-        self.processing_error = None
+        self.response = ""
 
-        states = ['initial', 'awaiting_location', 'awaiting_clarification', 'processing']
+        # Zmienne tymczasowe na wynik
+        self.processing_result = None
+
+        # Definicja stanów
+        states = ['initial', 'awaiting_location', 'processing']
+
         self.machine = AsyncMachine(model=self, states=states, initial='initial')
 
-        # Konfiguracja przejść (bez zmian logicznych, tylko kosmetyka)
-        self.machine.add_transition(trigger='intent_recognized', source='initial', dest='processing',
-                                    conditions='_has_valid_location', after='_trigger_data_processing')
-        self.machine.add_transition(trigger='intent_recognized', source='initial', dest='awaiting_location',
-                                    conditions='_is_location_missing', after='_ask_for_location')
-        self.machine.add_transition(trigger='intent_recognized', source='initial', dest='awaiting_clarification',
-                                    conditions='_is_location_invalid', after='_ask_for_correction')
-        self.machine.add_transition(trigger='other_question', source='initial', dest='initial',
-                                    after='_handle_other_question')
+        # --- Przejścia (Transitions) ---
 
-        # Obsługa dosłania lokalizacji w kolejnej wiadomości
-        self.machine.add_transition(trigger='location_provided', source=['awaiting_location', 'awaiting_clarification'],
-                                    dest='processing', conditions='_has_valid_location',
-                                    after='_trigger_data_processing')
-        self.machine.add_transition(trigger='location_provided', source=['awaiting_location', 'awaiting_clarification'],
-                                    dest='awaiting_clarification', conditions='_is_location_missing',
-                                    after='_ask_for_correction')
+        # 1. Ze stanu initial, wykryto intencję
+        self.machine.add_transition(
+            trigger='process_input',
+            source='initial',
+            dest='processing',
+            conditions='_has_valid_location_and_intent', # Mamy intencję i lokalizację -> od razu procesujemy
+            after='_fetch_data_action'
+        )
 
-        self.machine.add_transition('data_processed', 'processing', 'initial', after='_format_response')
-        self.machine.add_transition('error_occurred', 'processing', 'initial', after='_format_error')
+        self.machine.add_transition(
+            trigger='process_input',
+            source='initial',
+            dest='awaiting_location',
+            conditions='_has_intent_but_no_location', # Mamy intencję (np. Pogoda), ale brak miasta
+            after='_ask_for_location_text'
+        )
 
-    async def process_message(self, text: str) -> str:
-        # Logika stanu początkowego
+        self.machine.add_transition(
+            trigger='process_input',
+            source='initial',
+            dest='initial',
+            unless=['_has_valid_location_and_intent', '_has_intent_but_no_location'], # Greeting / Inne
+            after='_handle_greeting_or_unknown'
+        )
+
+        # 2. Ze stanu awaiting_location (dosłanie miasta)
+        self.machine.add_transition(
+            trigger='process_input',
+            source='awaiting_location',
+            dest='processing',
+            conditions='_check_location_in_input', # Sprawdzamy czy teraz podano miasto
+            after='_fetch_data_action'
+        )
+
+        self.machine.add_transition(
+            trigger='process_input',
+            source='awaiting_location',
+            dest='awaiting_location',
+            unless='_check_location_in_input', # Nadal nie podano miasta
+            after='_ask_for_location_again'
+        )
+
+        # 3. Powrót po przetworzeniu
+        self.machine.add_transition(
+            trigger='reset',
+            source='processing',
+            dest='initial',
+            after='_finalize_response'
+        )
+
+    async def handle_message(self, text: str) -> str:
+        """Główna pętla obsługi wiadomości."""
+
+        # Jeśli jesteśmy w initial, rozpoznajemy intencję od zera
         if self.state == 'initial':
-            self.current_intent = recognize_intent(text)
-            if not self.current_intent:
-                await self.trigger('other_question')
-                return self.response
+            self.current_intent = self.nlp_service.recognize_intent(text)
+            # Próbujemy wyciągnąć ID lokalizacji od razu
+            self.current_location_id = self.data_service.validate_and_get_id(text, self.current_intent)
 
-            entities = extract_entities(text)
-            # PRZEKAZUJEMY 'text' DO FALLBACKU
-            self.current_location_id = self.data_service.validate_and_get_id(entities, self.current_intent,
-                                                                             original_text=text)
+        await self.process_input(text) # Trigger maszyny stanów
 
-            await self.trigger('intent_recognized')
-            return self.response
-
-        # Logika gdy czekamy na lokalizację (np. użytkownik napisał wcześniej samą "pogoda")
-        elif self.state in ['awaiting_location', 'awaiting_clarification']:
-            entities = extract_entities(text)
-            # Tutaj też przekazujemy 'text', bo użytkownik mógł wpisać po prostu "Poznań"
-            self.current_location_id = self.data_service.validate_and_get_id(entities, self.current_intent,
-                                                                             original_text=text)
-
-            await self.trigger('location_provided')  # FSM sprawdzi warunki czy ID zostało znalezione
-            return self.response
+        # Jeśli weszliśmy w stan 'processing', musimy wrócić do 'initial' żeby wypluć wynik
+        if self.state == 'processing':
+            await self.reset()
 
         return self.response
 
-    # --- Warunki ---
-    def _has_valid_location(self):
-        return self.current_location_id is not None
+    # --- WARUNKI (CONDITIONS) ---
 
-    def _is_location_missing(self):
-        return self.current_location_id is None
+    def _has_valid_location_and_intent(self, text):
+        return self.current_intent in ['pogoda', 'ostrzeżenia', 'hydro'] and self.current_location_id is not None
 
-    def _is_location_invalid(self):
-        return False  # Uproszczenie
+    def _has_intent_but_no_location(self, text):
+        return self.current_intent in ['pogoda', 'ostrzeżenia', 'hydro'] and self.current_location_id is None
 
-    # --- ZMIENIONE TEKSTY ODPOWIEDZI ---
-    def _ask_for_location(self):
-        # Zamiast "Rozumiem...", proste pytanie
-        if self.current_intent == 'pogoda':
-            self.response = "Gdzie mam sprawdzić pogodę? Podaj nazwę miejscowości."
-        elif self.current_intent == 'ostrzeżenia':
-            self.response = "Dla jakiego powiatu chcesz sprawdzić ostrzeżenia?"
-        else:
-            self.response = "Podaj proszę lokalizację."
+    def _check_location_in_input(self, text):
+        # Jesteśmy w trybie oczekiwania, więc intencja jest już znana (self.current_intent)
+        # Próbujemy znaleźć lokalizację w NOWYM tekście
+        found_id = self.data_service.validate_and_get_id(text, self.current_intent)
+        if found_id:
+            self.current_location_id = found_id
+            return True
+        return False
 
-    def _ask_for_correction(self):
-        self.response = "Nie znalazłem takiej stacji pomiarowej. Sprawdź literówki lub podaj większe miasto w pobliżu."
+    # --- AKCJE (AFTER) ---
 
-    def _handle_other_question(self):
-        self.response = "Na razie znam się tylko na pogodzie i ostrzeżeniach. Zapytaj np. 'Jaka pogoda w Warszawie?'"
-
-    def _format_response(self):
-        self.response = self.processing_result
-        self._reset_context()
-
-    def _format_error(self):
-        self.response = f"Ups, coś poszło nie tak przy pobieraniu danych: {self.processing_error}"
-        self._reset_context()
-
-    def _reset_context(self):
-        self.current_intent = None
+    async def _fetch_data_action(self, text):
+        # Pobieramy dane z DataService
+        self.response = await self.data_service.fetch_data(self.current_intent, self.current_location_id)
+        # Czyścimy kontekst (opcjonalnie, zależy czy chcemy pamiętać)
         self.current_location_id = None
+        self.current_intent = None
 
-    async def _trigger_data_processing(self):
-        try:
-            self.response = "Sprawdzam..."  # Krótki komunikat oczekiwania
-            result = await self.data_service.fetch_data(self.current_intent, self.current_location_id)
-            self.processing_result = result
-            await self.trigger('data_processed')
-        except Exception as e:
-            self.processing_error = str(e)
-            await self.trigger('error_occurred')
+    def _ask_for_location_text(self, text):
+        if self.current_intent == 'pogoda':
+            self.response = "Gdzie mam sprawdzić pogodę? Podaj miasto."
+        elif self.current_intent == 'ostrzeżenia':
+            self.response = "Dla jakiego powiatu (lub miasta) chcesz sprawdzić ostrzeżenia?"
+        elif self.current_intent == 'hydro':
+            self.response = "O jaką rzekę lub stację hydrologiczną chodzi?"
+
+    def _ask_for_location_again(self, text):
+        self.response = "Nadal nie rozumiem lokalizacji. Spróbuj podać pełną nazwę (np. Wrocław, Wisła)."
+
+    def _handle_greeting_or_unknown(self, text):
+        if self.current_intent == 'greeting':
+            self.response = "Cześć! 👋 Sprawdzam pogodę, rzeki i ostrzeżenia. Co Cię interesuje?"
+        else:
+            self.response = "Nie jestem pewien. Zapytaj o pogodę, ostrzeżenia lub stan rzek."
+
+    def _finalize_response(self):
+        # Tu nic nie musimy robić, response jest już ustawiony w _fetch_data_action
+        pass

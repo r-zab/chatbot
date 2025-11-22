@@ -1,35 +1,54 @@
 import spacy
 
-INTENT_KEYWORDS = {
-    'pogoda': ['pogoda', 'temperatura', 'jak ciepło', 'stopni', 'ciśnienie', 'wiatr', 'synoptyczne'],
-    'ostrzeżenia': ['ostrzeżenie', 'alert', 'zagrożenie', 'uwaga', 'burza', 'upał', 'niebezpiecznie'],
-    'hydro': ['woda', 'rzeka', 'stan wody', 'poziom rzeki', 'hydrologiczne', 'wyleje'],
-}
+class NLPService:
+    def __init__(self):
+        try:
+            self.nlp = spacy.load("pl_core_news_sm")
+        except OSError:
+            print("Warning: Model spaCy 'pl_core_news_sm' not found. NLP features might be limited.")
+            self.nlp = None
 
-try:
-    nlp = spacy.load("pl_core_news_sm")
-except OSError:
-    print("BŁĄD: Model spaCy 'pl_core_news_sm' nie znaleziony. Uruchom: python -m spacy download pl_core_news_sm")
-    nlp = None
+    def recognize_intent(self, text: str) -> str:
+        text = text.lower()
+        scores = {
+            'pogoda': 0,
+            'ostrzeżenia': 0,
+            'hydro': 0
+        }
 
-def recognize_intent(text: str) -> str | None:
-    text_lower = text.lower()
-    for intent, keywords in INTENT_KEYWORDS.items():
-        if any(keyword in text_lower for keyword in keywords):
-            return intent
-    return None
+        # Scenariusz 1: Pogoda
+        keywords_weather = ['pogoda', 'temperatura', 'słońce', 'wieje', 'zimno', 'ciepło', 'deszcz', 'śnieg', 'prognoza', 'stopni']
+        for w in keywords_weather:
+            if w in text: scores['pogoda'] += 1
 
-def extract_entities(text: str) -> dict[str, list[str]]:
-    if not nlp:
-        return {'placeName': [], 'geogName': []}
+        # Scenariusz 2: Ostrzeżenia
+        keywords_alerts = ['alert', 'ostrzeżenie', 'burza', 'grad', 'wiatr', 'meteo', 'zagrożenie', 'uwaga']
+        for w in keywords_alerts:
+            if w in text: scores['ostrzeżenia'] += 1
 
-    doc = nlp(text)
-    locations = {'placeName': [], 'geogName': []}
+        # Scenariusz 3: Hydro
+        keywords_hydro = ['rzeka', 'woda', 'stan', 'wylewa', 'powódź', 'wisła', 'odra', 'warta', 'poziom', 'wodowskaz']
+        for w in keywords_hydro:
+            if w in text: scores['hydro'] += 1
 
-    for ent in doc.ents:
-        if ent.label_ == 'placeName':
-            locations['placeName'].append(ent.text)
-        elif ent.label_ == 'geogName':
-            locations['geogName'].append(ent.text)
+        # Wybór najlepszej intencji
+        best_intent = max(scores, key=scores.get)
 
-    return locations
+        if scores[best_intent] > 0:
+            return best_intent
+
+        return 'greeting' # Scenariusz 4: Greeting/Inne
+
+    def extract_entities(self, text: str) -> dict:
+        if not self.nlp:
+            return {'placeName': []}
+
+        doc = self.nlp(text)
+        entities = {'placeName': []}
+
+        for ent in doc.ents:
+            # spaCy dla polskiego różnie rozpoznaje lokalizacje (placeName, geogName, location itp.)
+            if ent.label_ in ['placeName', 'geogName', 'LOC', 'GPE']:
+                entities['placeName'].append(ent.text)
+
+        return entities

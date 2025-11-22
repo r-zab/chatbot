@@ -1,30 +1,46 @@
-# app/main.py
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from app.core.models import ChatRequest, ChatResponse
-from app.services.state_manager import get_or_create_fsm
-# from app.logic.conversation import ChatbotLogic # Typowanie
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from app.logic.conversation import ChatbotLogic
+import asyncio
 
 app = FastAPI(title="Pogodowy Stróż API")
 
-# Serwowanie frontendu (SPA)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# 1. CORS Configuration (Integracja z Lovable)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # W produkcji warto zmienić na konkretne domeny
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Prosty magazyn sesji w pamięci (w produkcji użyj Redis/DB)
+sessions = {}
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
 
 @app.post("/chat", response_model=ChatResponse)
-async def handle_chat(request: ChatRequest):
-    """Główny endpoint obsługi czatu."""
-    # Pobranie lub stworzenie maszyny stanów dla danej sesji
-    fsm = get_or_create_fsm(request.session_id)
+async def chat_endpoint(request: ChatRequest):
+    session_id = request.session_id
 
-    # Przekazanie wiadomości do logiki konwersacyjnej
-    bot_response_text = await fsm.process_message(request.message)
+    # Pobierz lub stwórz instancję logiki dla sesji
+    if session_id not in sessions:
+        sessions[session_id] = ChatbotLogic(session_id)
 
-    return ChatResponse(
-        response=bot_response_text,
-        session_id=request.session_id
-    )
+    bot = sessions[session_id]
+
+    # Przetwórz wiadomość
+    response_text = await bot.handle_message(request.message)
+
+    return ChatResponse(response=response_text, session_id=session_id)
 
 @app.get("/")
-async def read_root():
-    from fastapi.responses import FileResponse
-    return FileResponse('static/index.html')
+async def root():
+    return {"status": "ok", "message": "Pogodowy Stróż Backend is running"}
