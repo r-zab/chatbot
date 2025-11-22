@@ -1,54 +1,64 @@
+# app/logic/nlp.py
 import spacy
+
 
 class NLPService:
     def __init__(self):
+        # Słowa kluczowe do punktacji
+        self.KEYWORDS = {
+            'ostrzeżenia': [
+                'ostrzeż', 'alert', 'zagroż', 'uwaga', 'burz', 'upał', 'wiatr', 'grad', 'mróz', 'wichur',
+                'ulew', 'śnieg', 'gołoledź', 'meteo', 'worn'
+            ],
+            'hydro': [
+                'wod', 'rzek', 'stan', 'poziom', 'wylew', 'zalew', 'hydro', 'cm', 'głębokość', 'wodowskaz',
+                'fala', 'powódź', 'wisła', 'odra', 'warta'
+            ],
+            'pogoda': [
+                'pogod', 'temperatu', 'ciepł', 'zimn', 'stopni', 'ciśnieni', 'synop', 'celcjusz', 'prognoz',
+                'deszcz', 'słońc', 'chmur', 'jaka'
+            ]
+        }
+
+        # Ładowanie modelu spaCy
         try:
             self.nlp = spacy.load("pl_core_news_sm")
         except OSError:
-            print("Warning: Model spaCy 'pl_core_news_sm' not found. NLP features might be limited.")
+            print("OSTRZEŻENIE: Brak modelu spaCy. Uruchom: python -m spacy download pl_core_news_sm")
             self.nlp = None
 
     def recognize_intent(self, text: str) -> str:
-        text = text.lower()
-        scores = {
-            'pogoda': 0,
-            'ostrzeżenia': 0,
-            'hydro': 0
-        }
+        """Rozpoznaje intencję metodą punktacji."""
+        text_lower = text.lower()
+        scores = {'ostrzeżenia': 0, 'hydro': 0, 'pogoda': 0}
 
-        # Scenariusz 1: Pogoda
-        keywords_weather = ['pogoda', 'temperatura', 'słońce', 'wieje', 'zimno', 'ciepło', 'deszcz', 'śnieg', 'prognoza', 'stopni']
-        for w in keywords_weather:
-            if w in text: scores['pogoda'] += 1
+        for intent, stems in self.KEYWORDS.items():
+            for stem in stems:
+                if stem in text_lower:
+                    scores[intent] += 1
 
-        # Scenariusz 2: Ostrzeżenia
-        keywords_alerts = ['alert', 'ostrzeżenie', 'burza', 'grad', 'wiatr', 'meteo', 'zagrożenie', 'uwaga']
-        for w in keywords_alerts:
-            if w in text: scores['ostrzeżenia'] += 1
-
-        # Scenariusz 3: Hydro
-        keywords_hydro = ['rzeka', 'woda', 'stan', 'wylewa', 'powódź', 'wisła', 'odra', 'warta', 'poziom', 'wodowskaz']
-        for w in keywords_hydro:
-            if w in text: scores['hydro'] += 1
-
-        # Wybór najlepszej intencji
         best_intent = max(scores, key=scores.get)
+        max_score = scores[best_intent]
 
-        if scores[best_intent] > 0:
+        # Debug
+        print(f"NLP Score: {scores} -> {best_intent}")
+
+        # Jeśli wynik jest > 0, zwracamy intencję.
+        # Jeśli 0, ale tekst jest krótki (np. nazwa miasta), zakładamy pogodę.
+        if max_score > 0:
             return best_intent
 
-        return 'greeting' # Scenariusz 4: Greeting/Inne
+        # Fallback: Domyślnie pogoda
+        return 'pogoda'
 
-    def extract_entities(self, text: str) -> dict:
-        if not self.nlp:
-            return {'placeName': []}
-
-        doc = self.nlp(text)
-        entities = {'placeName': []}
-
-        for ent in doc.ents:
-            # spaCy dla polskiego różnie rozpoznaje lokalizacje (placeName, geogName, location itp.)
-            if ent.label_ in ['placeName', 'geogName', 'LOC', 'GPE']:
-                entities['placeName'].append(ent.text)
-
-        return entities
+    def extract_entities(self, text: str) -> dict[str, list[str]]:
+        """Wyciąga encje geograficzne."""
+        locations = {'placeName': [], 'geogName': []}
+        if self.nlp:
+            doc = self.nlp(text)
+            for ent in doc.ents:
+                if ent.label_ == 'placeName':
+                    locations['placeName'].append(ent.text)
+                elif ent.label_ == 'geogName':
+                    locations['geogName'].append(ent.text)
+        return locations
