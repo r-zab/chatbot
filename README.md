@@ -71,7 +71,6 @@ Otwórz terminal w folderze `pogodowy-stroz`.
 ```bash
   python3 -m venv venv
   source venv/bin/activate
-    .\venv\Scripts\Activate.ps1
 ```
 
 Po aktywacji powinieneś widzieć (venv) na początku linii w terminalu.
@@ -120,50 +119,6 @@ Serwer powinien wystartować na porcie 8000.
 Sprawdź, czy działa, wchodząc w przeglądarce na: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ---
+## Autorzy
 
-## 🎨 CZĘŚĆ 2: Frontend (Lovable / React)
-
-To jest interfejs graficzny wygenerowany przez Lovable.
-
-### Wymagania
-
-- Node.js (wersja 18 lub nowsza) – pobierz ze strony [nodejs.org](https://nodejs.org/)
-
-### Krok 1: Wejdź do folderu z frontendem
-
-W terminalu przejdź do folderu z plikami Lovable (tam gdzie jest plik `package.json`), np.:
-
-```bash
-  cd frontend-lovable
-```
-
-### Krok 2: Zainstaluj zależności
-
-```bash
-  npm install
-```
-### Krok 3: Uruchom stronę
-
-```bash
-  npm run dev
-```
-
-
-### Krok 4: Otwórz aplikację
-
-Terminal pokaże adres lokalny, zazwyczaj:  
-👉 [http://localhost:5173](http://localhost:5173)
-
----
-
-## 🆘 Rozwiązywanie problemów
-
-1. **Frontend nie łączy się z Backendem (Błąd sieci)**  
-   - Upewnij się, że Backend (`uvicorn`) działa w osobnym oknie terminala.  
-   - Sprawdź, czy w pliku `app/main.py` (w Pythonie) jest dodany `CORSMiddleware` z `allow_origins=["*"]`.
-
-2. **Bot odpowiada "Nie znalazłem takiej lokalizacji" na wszystko**  
-   - Brakuje plików w `app/data/`. Sprawdź Krok 5 w sekcji Backend.
-
-3. **Błąd `ModuleNotFoundError: No module named 'app'`**
-   - Uruchamiasz komendę `uvicorn` ze złego folderu. Musisz być w katalogu nadrzędnym, w którym bezpośrednio widać folder `app`.
+Backend: Rafał Zaborek & Jakub Zatorski & Jakub Różycki
