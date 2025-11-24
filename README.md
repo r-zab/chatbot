@@ -130,4 +130,4 @@ Sprawdź, czy działa, wchodząc w przeglądarce na: [http://127.0.0.1:8000/docs
 ---
 ## Autorzy
 
-Backend: Rafał Zaborek & Jakub Zatorski & Jakub Różycki
+Backend: Rafał Zaborek & Jakub Zatorski & Jakub Różycki.
