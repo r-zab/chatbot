@@ -84,8 +84,17 @@ Jeśli nie masz pliku `requirements.txt`, zainstaluj ręcznie:
 ```bash
   pip install fastapi uvicorn httpx spacy transitions geopy pandas
 ```
+### Krok 4: Generacja Mapy Współrzędnych (Geokodowanie Stacji) 🌍
 
-### Krok 4: Pobierz model językowy (AI)
+Ponieważ bot musi wiedzieć, gdzie leży każda z 60 stacji IMGW, musisz wygenerować plik z koordynatami.
+
+**Upewnij się, że masz już zainstalowaną bibliotekę `geopy` (Krok 2).**
+
+```bash
+# Uruchom ten skrypt, aby stworzyć station_coords.json
+python scripts/get_station_coords.py
+```
+### Krok 5: Pobierz model językowy (AI)
 
 Backend potrzebuje polskiego modelu do zrozumienia, czym jest "miasto" w zdaniu.
 
@@ -93,7 +102,7 @@ Backend potrzebuje polskiego modelu do zrozumienia, czym jest "miasto" w zdaniu.
   python -m spacy download pl_core_news_sm
 ```
 
-### Krok 5: Weryfikacja Danych (KRYTYCZNE!) ⚠️
+### Krok 6: Weryfikacja Danych (KRYTYCZNE!) ⚠️
 
 Sprawdź, czy w folderze `app/data/` znajdują się pliki `.json`. Bez nich bot nie zadziała.
 
@@ -107,7 +116,7 @@ W folderze `app/data/` powinny być:
 
 **Uwaga:** Jeśli folder jest pusty, musisz skopiować te pliki od autora projektu lub wygenerować je skryptami z folderu `scripts/` (wymaga to posiadania surowych plików CSV z GUS).
 
-### Krok 6: Uruchom serwer
+### Krok 7: Uruchom serwer
 
 Będąc w głównym folderze projektu, wpisz:
 
