@@ -11,7 +11,7 @@ from app.api.imgw_client import ImgwApiClient
 class DataService:
     def __init__(self):
         self.imgw_client = ImgwApiClient()
-        self.geolocator = Nominatim(user_agent="pogodowy_stroz_bot_v5")
+        self.geolocator = Nominatim(user_agent="pogodowy_stroz_bot_v6")
 
         current_dir = Path(__file__).resolve().parent
         data_dir = current_dir.parent / "data"
@@ -23,7 +23,7 @@ class DataService:
             'jest', 'bedzie', 'będzie', 'było', 'była', 'sa', 'są',
             'podaj', 'pokaz', 'pokaż', 'sprawdz', 'sprawdź', 'zobacz', 'daj', 'powiedz',
             'pogoda', 'pogode', 'pogody', 'pogodzie', 'pogodę',
-            'temperatura', 'temperaturze', 'temperaturę', 'temperature',
+            'temperatura', 'temperaturze', 'temperaturę',
             'prognoza', 'prognozie', 'prognozę',
             'ostrzezenia', 'ostrzeżenia', 'ostrzeżenie', 'ostrzezenie',
             'alert', 'alerty', 'alarm', 'alarmy',
@@ -33,110 +33,67 @@ class DataService:
             'rzeka', 'rzeki', 'rzece', 'rzekę', 'rzeką',
             'wodowskaz', 'wodowskazu',
             'jutro', 'dzis', 'dziś', 'dzisiaj', 'teraz',
-            'stopni', 'stopien', 'stopień',
-            'predkosc', 'prędkość', 'kierunek',
-            'wiatr', 'wiatru', 'wietrze',
         }
 
-        # 🔥 MAPOWANIE ODMIAN RZEK → forma podstawowa (znormalizowana)
+        # MAPOWANIE ODMIAN RZEK
         self.RIVER_LEMMAS = {
-            # Wisła (wszystkie odmiany!)
-            'wisle': 'wisla', 'wisły': 'wisla', 'wiśle': 'wisla',
-            'wisłą': 'wisla', 'wisłę': 'wisla', 'wisla': 'wisla',
-            'wisła': 'wisla', 'wiślę': 'wisla',
-            # San
-            'sanie': 'san', 'sanu': 'san', 'sanem': 'san',
-            # Odra
+            'wisle': 'wisla', 'wisly': 'wisla', 'wisla': 'wisla',
+            'wiśle': 'wisla', 'wisły': 'wisla', 'wisła': 'wisla',
             'odrze': 'odra', 'odry': 'odra', 'odrą': 'odra',
-            # Warta
             'warcie': 'warta', 'warty': 'warta', 'wartą': 'warta',
-            # Narew
-            'narwi': 'narew', 'narwią': 'narew', 'narwię': 'narew',
-            # Bug
+            'sanie': 'san', 'sanu': 'san', 'sanem': 'san',
+            'narwi': 'narew', 'narwią': 'narew',
             'bugu': 'bug', 'bugiem': 'bug',
-            # Noteć
             'noteci': 'notec', 'notecią': 'notec', 'noteć': 'notec',
-            # Pilica
-            'pilicy': 'pilica', 'pilicą': 'pilica', 'pilicę': 'pilica',
-            # Dunajec
-            'dunajcu': 'dunajec', 'dunajca': 'dunajec', 'dunajcem': 'dunajec',
-            # Nysa
-            'nysie': 'nysa', 'nysy': 'nysa', 'nysą': 'nysa',
-            # Bóbr
-            'bobrze': 'bobr', 'bobru': 'bobr', 'bóbr': 'bobr', 'bobr': 'bobr',
-            # Wieprz
-            'wieprza': 'wieprz', 'wieprzu': 'wieprz', 'wierzem': 'wieprz',
-            # Prosna
-            'prośnie': 'prosna', 'prosny': 'prosna',
-            # Bzura
-            'bzurze': 'bzura', 'bzury': 'bzura',
-            # Brda
+            'pilicy': 'pilica', 'pilicą': 'pilica',
+            'dunajcu': 'dunajec', 'dunajca': 'dunajec',
+            'bobrze': 'bobr', 'bobru': 'bobr', 'bóbr': 'bobr',
+            'nysie': 'nysa', 'nysy': 'nysa',
+            'wieprza': 'wieprz', 'wieprzu': 'wieprz',
             'brdzie': 'brda', 'brdy': 'brda',
-            # Gwda
             'gwdzie': 'gwda', 'gwdy': 'gwda',
-            # Drwęca
-            'drwęcy': 'drweca', 'drwecą': 'drweca', 'drweca': 'drweca',
-            # Raba
-            'rabie': 'raba', 'raby': 'raba',
-            # Poprad
-            'popradzie': 'poprad', 'popradu': 'poprad',
-            # Soła
-            'sole': 'sola', 'soły': 'sola', 'soła': 'sola',
-            # Skawa
-            'skawie': 'skawa', 'skawy': 'skawa',
-            # Ner
-            'nerze': 'ner', 'neru': 'ner',
-            # Barycz
-            'baryczy': 'barycz', 'baryczą': 'barycz',
-            # Tanew
-            'tanwi': 'tanew', 'tanwią': 'tanew',
-            # Kamienna
-            'kamiennej': 'kamienna', 'kamienną': 'kamienna',
-            # Widawka
-            'widawce': 'widawka', 'widawki': 'widawka',
+            'biebrzy': 'biebrza', 'biebrzą': 'biebrza',
         }
 
-        # 🔥🔥🔥 KLUCZOWE: HARDCODED ID dla głównych rzek
-        # To jest NADRZĘDNE wobec map_hydro.json!
-        # Sprawdź w API IMGW jakie są prawidłowe ID dla tych rzek
-        self.MAIN_RIVERS_IDS = {
-            # Format: 'nazwa_znormalizowana': 'id_z_api_imgw'
-            # Te ID musisz sprawdzić w swoim map_hydro.json lub w API!
-            # Poniżej są przykładowe - MUSISZ je zweryfikować
-
-            # Wisła - główna rzeka, NIE Wiślina!
-            'wisla': None,  # Zostanie wypełnione z map_hydro
-            'odra': None,
-            'warta': None,
-            'bug': None,
-            'narew': None,
-            'san': None,
-            'notec': None,
-            'pilica': None,
-            'dunajec': None,
-            'bobr': None,
-            'nysa': None,
-            'wieprz': None,
-            'prosna': None,
-            'bzura': None,
-            'brda': None,
-            'gwda': None,
-            'drweca': None,
-            'raba': None,
-            'poprad': None,
-            'sola': None,
-            'skawa': None,
-            'ner': None,
-            'barycz': None,
-            'tanew': None,
-            'kamienna': None,
-            'widawka': None,
+        # GŁÓWNE RZEKI (hardcoded)
+        self.MAIN_RIVERS = {
+            'wisla': '149180140',
+            'odra': '153140020',
+            'warta': '151180130',
+            'bug': '150240010',
+            'narew': '152230090',
+            'san': '150210210',
+            'notec': '153170100',
+            'pilica': '151190090',
+            'dunajec': '149200140',
+            'bobr': '152150020',
+            'nysa': '150170060',
+            'wieprz': '151230010',
+            'brda': '153170140',
+            'gwda': '153160210',
+            'bzura': '152190050',
+            'raba': '149200090',
+            'skawa': '149190290',
+            'poprad': '149200220',
+            'sola': '150190160',
+            'drweca': '153190120',
+            'ner': '151190040',
+            'barycz': '151160140',
+            'tanew': '150220160',
+            'biebrza': '153220170',
+            'pisa': '153210190',
+            'lyna': '154200030',
+            'slupia': '154170010',
+            'parseta': '154150040',
+            'rega': '153150050',
+            'radunia': '154180060',
         }
 
         # Ładowanie danych
         try:
             raw_terc = self._load_json(data_dir / "terc_dict.json")
             self.terc_dict = {self._normalize(k): v for k, v in raw_terc.items()}
+            self.terc_reverse = {v: k for k, v in raw_terc.items()}
 
             raw_simc = self._load_json(data_dir / "simc_dict.json")
             self.simc_dict = {self._normalize(k): v for k, v in raw_simc.items()}
@@ -146,12 +103,7 @@ class DataService:
             try:
                 raw_hydro = self._load_json(data_dir / "map_hydro.json")
                 self.map_hydro = {self._normalize(k): v for k, v in raw_hydro.items()}
-
-                # 🔥 Wypełnij MAIN_RIVERS_IDS z map_hydro
-                self._populate_main_rivers()
-
-            except Exception as e:
-                print(f"⚠️ Błąd ładowania map_hydro: {e}")
+            except:
                 self.map_hydro = {}
 
             try:
@@ -159,61 +111,22 @@ class DataService:
             except:
                 self.station_coords = {}
 
-            print(f"✅ Załadowano: {len(self.simc_dict)} miast, {len(self.map_hydro)} rzek")
+            print(f"✅ DataService: {len(self.simc_dict)} miast, {len(self.terc_dict)} powiatów")
 
         except Exception as e:
             print(f"❌ BŁĄD: {e}")
             self.terc_dict = {}
+            self.terc_reverse = {}
             self.simc_dict = {}
             self.map_simc_to_synop = {}
             self.map_hydro = {}
             self.station_coords = {}
-
-    def _populate_main_rivers(self):
-        """
-        🔥 Wypełnia MAIN_RIVERS_IDS z map_hydro.json
-        Szuka DOKŁADNYCH dopasowań dla głównych rzek.
-        """
-        print("🏞️ Mapowanie głównych rzek:")
-
-        for river_name in list(self.MAIN_RIVERS_IDS.keys()):
-            # Szukaj dokładnego dopasowania w map_hydro
-            if river_name in self.map_hydro:
-                self.MAIN_RIVERS_IDS[river_name] = self.map_hydro[river_name]
-                print(f"   ✅ {river_name} → {self.map_hydro[river_name]}")
-            else:
-                # Spróbuj z polskimi znakami
-                alternatives = [
-                    river_name,
-                    river_name.replace('a', 'ą'),
-                    river_name.replace('e', 'ę'),
-                    river_name.replace('o', 'ó'),
-                    river_name.replace('c', 'ć'),
-                    river_name.replace('n', 'ń'),
-                    river_name.replace('s', 'ś'),
-                    river_name.replace('z', 'ź'),
-                    river_name.replace('z', 'ż'),
-                    river_name.replace('l', 'ł'),
-                ]
-
-                found = False
-                for alt in alternatives:
-                    norm_alt = self._normalize(alt)
-                    if norm_alt in self.map_hydro:
-                        self.MAIN_RIVERS_IDS[river_name] = self.map_hydro[norm_alt]
-                        print(f"   ✅ {river_name} → {self.map_hydro[norm_alt]} (via {alt})")
-                        found = True
-                        break
-
-                if not found:
-                    print(f"   ⚠️ {river_name} - nie znaleziono w map_hydro!")
 
     def _load_json(self, path):
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
     def _normalize(self, text: str) -> str:
-        """Normalizuje tekst: małe litery, bez polskich znaków."""
         if not text:
             return ""
         text = text.lower().strip()
@@ -222,33 +135,55 @@ class DataService:
             if unicodedata.category(c) != "Mn"
         )
         text = text.replace("?", "").replace(".", "").replace(",", "").replace("!", "")
+        text = text.replace("ł", "l")
         return text.strip()
 
     def _normalize_river(self, name: str) -> str:
-        """Normalizuje odmianę nazwy rzeki do formy podstawowej."""
         norm = self._normalize(name)
         return self.RIVER_LEMMAS.get(norm, norm)
 
+    def _degrees_to_direction(self, degrees) -> str:
+        """Konwertuje stopnie na kierunek wiatru."""
+        if degrees is None or degrees == '':
+            return None
+
+        try:
+            deg = float(degrees)
+        except (ValueError, TypeError):
+            return None
+
+        deg = deg % 360
+
+        directions = [
+            "Północ",
+            "Północny Wschód",
+            "Wschód",
+            "Południowy Wschód",
+            "Południe",
+            "Południowy Zachód",
+            "Zachód",
+            "Północny Zachód"
+        ]
+
+        index = int((deg + 22.5) / 45) % 8
+        return directions[index]
+
     def _generate_candidates(self, text: str) -> list[str]:
-        """Generuje kandydatów lokalizacji z tekstu."""
         norm_text = self._normalize(text)
         words = [
             w for w in norm_text.split()
-            if w not in self.STOPWORDS and len(w) >= 2  # 🔥 Zmienione na >= 2 dla "Bug", "Ner"
+            if w not in self.STOPWORDS and len(w) >= 2
         ]
 
         candidates = []
 
-        # Bigramy
         if len(words) > 1:
             for i in range(len(words) - 1):
                 bigram = f"{words[i]} {words[i + 1]}"
                 candidates.append(bigram)
 
-        # Pojedyncze słowa
         candidates.extend(words)
 
-        # Usuń duplikaty
         seen = set()
         unique = []
         for c in candidates:
@@ -256,11 +191,9 @@ class DataService:
                 seen.add(c)
                 unique.append(c)
 
-        print(f"   📝 Kandydaci: {unique}")
         return unique
 
     def get_nearest_station(self, city_name: str) -> dict | None:
-        """Znajduje najbliższą stację pogodową."""
         if not self.station_coords:
             return None
 
@@ -299,9 +232,6 @@ class DataService:
 
     def validate_and_get_id(self, entities: dict, intent: str, original_text: str = "") -> dict | None:
         """Waliduje lokalizację i zwraca obiekt {id, name, type}."""
-        print(f"\n   🔎 validate_and_get_id(intent={intent})")
-
-        # Zbierz kandydatów
         nlp_candidates = []
         if entities.get('placeName'):
             nlp_candidates.extend([self._normalize(p) for p in entities['placeName']])
@@ -312,62 +242,36 @@ class DataService:
         all_candidates = nlp_candidates + text_candidates
         all_candidates = list(dict.fromkeys(all_candidates))
 
-        print(f"      Kandydaci: {all_candidates}")
-
         # ==================== HYDRO ====================
         if intent == 'hydro':
             for candidate in all_candidates:
                 if len(candidate) < 2:
                     continue
 
-                # 🔥 KROK 1: Normalizuj odmianę (np. "Wiśle" → "wisla")
                 normalized = self._normalize_river(candidate)
-                print(f"      Próba: '{candidate}' → '{normalized}'")
 
-                # 🔥 KROK 2: NAJPIERW sprawdź główne rzeki (HARDCODED)
-                # To zapobiega fuzzy matching "wisla" → "wislina"!
-                if normalized in self.MAIN_RIVERS_IDS:
-                    river_id = self.MAIN_RIVERS_IDS[normalized]
-                    if river_id:
-                        print(f"      ✅ GŁÓWNA RZEKA: {normalized} → {river_id}")
-                        return {
-                            "type": "hydro",
-                            "id": river_id,
-                            "name": normalized.title()
-                        }
-                    else:
-                        print(f"      ⚠️ Główna rzeka '{normalized}' nie ma ID w map_hydro!")
+                if normalized in self.MAIN_RIVERS:
+                    return {
+                        "type": "hydro",
+                        "id": self.MAIN_RIVERS[normalized],
+                        "name": normalized.title()
+                    }
 
-                # 🔥 KROK 3: Dokładne dopasowanie w map_hydro
                 if normalized in self.map_hydro:
-                    print(f"      ✅ Dokładne: {normalized}")
                     return {
                         "type": "hydro",
                         "id": self.map_hydro[normalized],
                         "name": normalized.title()
                     }
 
-                # 🔥 KROK 4: Fuzzy matching TYLKO dla nieznanych rzek
-                # I TYLKO jeśli to NIE jest główna rzeka!
-                if normalized not in self.MAIN_RIVERS_IDS:
-                    all_hydro = list(self.map_hydro.keys())
+                for key in self.map_hydro.keys():
+                    if key.startswith(normalized + " "):
+                        return {
+                            "type": "hydro",
+                            "id": self.map_hydro[key],
+                            "name": key.title()
+                        }
 
-                    # 🔥 WYŻSZY PRÓG - 95% podobieństwa!
-                    cutoff = 0.95
-
-                    matches = difflib.get_close_matches(normalized, all_hydro, n=1, cutoff=cutoff)
-                    if matches:
-                        matched = matches[0]
-                        # 🔥 Dodatkowa walidacja - nie dopasowuj do głównych rzek przez fuzzy!
-                        if matched not in self.MAIN_RIVERS_IDS:
-                            print(f"      ✅ Fuzzy: {normalized} → {matched}")
-                            return {
-                                "type": "hydro",
-                                "id": self.map_hydro[matched],
-                                "name": matched.title()
-                            }
-
-            print(f"      ❌ Nie znaleziono rzeki")
             return None
 
         # ==================== POGODA ====================
@@ -378,7 +282,6 @@ class DataService:
                 if len(candidate) < 3:
                     continue
 
-                # Dokładne dopasowanie
                 if candidate in all_cities:
                     simc_id = self.simc_dict[candidate]
                     if simc_id in self.map_simc_to_synop:
@@ -388,25 +291,22 @@ class DataService:
                             "name": candidate.title()
                         }
 
-                # Fuzzy
                 matches = difflib.get_close_matches(candidate, all_cities, n=1, cutoff=0.85)
                 if matches:
                     best = matches[0]
                     simc_id = self.simc_dict[best]
                     if simc_id in self.map_simc_to_synop:
-                        print(f"      ✅ Miasto: {best}")
                         return {
                             "type": "direct",
                             "id": self.map_simc_to_synop[simc_id],
                             "name": best.title()
                         }
 
-            # Fallback - najbliższa stacja
+            # Fallback - geolokalizacja
             if all_candidates:
                 valid = [c for c in all_candidates if c not in self.STOPWORDS and len(c) >= 4]
                 if valid:
                     potential = max(valid, key=len)
-                    print(f"      🔄 Geolokalizacja: {potential}")
                     return self.get_nearest_station(potential)
 
             return None
@@ -433,7 +333,6 @@ class DataService:
                     matches = difflib.get_close_matches(key, all_powiats, n=1, cutoff=0.80)
                     if matches:
                         matched = matches[0]
-                        print(f"      ✅ Powiat: {matched}")
                         return {
                             "type": "teryt",
                             "id": self.terc_dict[matched],
@@ -445,28 +344,57 @@ class DataService:
         return None
 
     async def fetch_data(self, intent: str, location_data: dict) -> str:
-        """Pobiera dane z API IMGW."""
+        """Pobiera dane z API IMGW i formatuje odpowiedź."""
         try:
             loc_id = location_data['id']
             loc_name = location_data.get('name', 'Nieznane')
 
+            # ==================== POGODA ====================
             if intent == 'pogoda':
                 prefix = ""
                 if location_data.get('type') == 'nearest':
                     user_city = location_data.get('user_city', '?').title()
                     station_name = location_data.get('station_name', '?')
                     distance = location_data.get('distance', '?')
-                    prefix = f"📍 Najbliższa stacja: **{station_name}** ({distance} km od {user_city}).\n\n"
+                    prefix = f"📍 Najbliższa stacja: {station_name} ({distance} km od {user_city})\n\n"
 
                 data = await self.imgw_client.get_synop_data(loc_id)
                 if isinstance(data, list):
                     data = data[0] if data else {}
 
+                station = data.get('stacja', loc_name)
                 temp = data.get('temperatura', '?')
-                wind = data.get('predkosc_wiatru', 0)
-                rain = data.get('suma_opadu', 0)
-                return f"{prefix}🌡️ {temp}°C, 💨 {wind} m/s, 🌧️ {rain} mm"
+                wind_speed = data.get('predkosc_wiatru', '?')
+                wind_dir_deg = data.get('kierunek_wiatru', None)
+                rain = data.get('suma_opadu', '?')
+                pressure = data.get('cisnienie', None)
+                humidity = data.get('wilgotnosc_wzgledna', None)
+                date = data.get('data_pomiaru', '')
+                hour = data.get('godzina_pomiaru', '')
 
+                wind_direction = self._degrees_to_direction(wind_dir_deg)
+
+                # 🔥 FORMATOWANIE - kierunek w nowej linii
+                response = f"{prefix}🏙️ {station}\n"
+                response += f"🌡️ Temperatura: {temp}°C\n"
+                response += f"💨 Wiatr: {wind_speed} m/s\n"
+
+                if wind_direction:
+                    response += f"🧭 Kierunek: {wind_direction}\n"
+
+                response += f"🌧️ Opady: {rain} mm"
+
+                if pressure and pressure != 'null' and pressure is not None:
+                    response += f"\n🔵 Ciśnienie: {pressure} hPa"
+                if humidity and humidity != 'null' and humidity is not None:
+                    response += f"\n💧 Wilgotność: {humidity}%"
+
+                if date and hour:
+                    response += f"\n\n📅 Pomiar: {date}, godz. {hour}:00"
+
+                return response
+
+            # ==================== HYDRO ====================
             elif intent == 'hydro':
                 data = await self.imgw_client.get_hydro_data(loc_id)
                 if isinstance(data, list):
@@ -475,29 +403,71 @@ class DataService:
                 river = data.get('rzeka', loc_name)
                 station = data.get('stacja', '?')
                 water_level = data.get('stan_wody', '?')
-                return f"💧 Rzeka: **{river}**, Stacja: {station}, Stan: **{water_level} cm**"
+                water_temp = data.get('temperatura_wody', None)
+                date = data.get('data_pomiaru', '')
+                hour = data.get('godzina_pomiaru', '')
 
+                response = f"🏞️ {river}\n"
+                response += f"📍 Stacja: {station}\n"
+                response += f"🌊 Stan wody: {water_level} cm"
+
+                if water_temp and water_temp != 'null':
+                    response += f"\n🌡️ Temp. wody: {water_temp}°C"
+
+                if date and hour:
+                    response += f"\n\n📅 Pomiar: {date}, godz. {hour}:00"
+
+                return response
+
+            # ==================== OSTRZEŻENIA ====================
             elif intent == 'ostrzeżenia':
                 warnings = await self.imgw_client.get_meteo_warnings()
+
                 if isinstance(warnings, dict):
                     return "❌ Błąd API ostrzeżeń."
 
+                if not isinstance(warnings, list):
+                    return "❌ Nieoczekiwany format danych."
+
                 found = []
+
                 for w in warnings:
-                    codes = w.get('powiaty_kod', [])
-                    if isinstance(codes, str):
-                        codes = [codes]
-                    if loc_id in codes:
-                        zjawisko = w.get('zjawisko', 'Alert')
-                        stopien = w.get('stopien', 1)
-                        found.append(f"⚠️ {zjawisko} (stopień {stopien})")
+                    teryt_codes = w.get('teryt', [])
+
+                    if isinstance(teryt_codes, str):
+                        teryt_codes = [teryt_codes]
+
+                    if loc_id in teryt_codes:
+                        nazwa = w.get('nazwa_zdarzenia', 'Alert')
+                        stopien = w.get('stopien', '?')
+                        od = w.get('obowiazuje_od', '')
+                        do = w.get('obowiazuje_do', '')
+                        tresc = w.get('tresc', '')
+                        prawdop = w.get('prawdopodobienstwo', '')
+
+                        alert = f"⚠️ {nazwa} (stopień {stopien})"
+
+                        if prawdop:
+                            alert += f"\n   📊 Prawdopodobieństwo: {prawdop}%"
+                        if od:
+                            alert += f"\n   🕐 Od: {od}"
+                        if do:
+                            alert += f"\n   🕐 Do: {do}"
+                        if tresc:
+                            if len(tresc) > 150:
+                                tresc = tresc[:150] + "..."
+                            alert += f"\n   📝 {tresc}"
+
+                        found.append(alert)
 
                 if found:
-                    return "\n".join(found)
-                return f"✅ Brak ostrzeżeń dla: **{loc_name}**."
+                    header = f"🚨 Ostrzeżenia dla {loc_name}:\n\n"
+                    return header + "\n\n".join(found)
+
+                return f"✅ Brak ostrzeżeń dla {loc_name}."
 
         except Exception as e:
             print(f"❌ Błąd: {e}")
-            return f"❌ Błąd: {e}"
+            return f"❌ Błąd pobierania danych: {e}"
 
         return "❓ Nieznana intencja."

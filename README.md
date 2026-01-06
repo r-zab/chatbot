@@ -63,20 +63,7 @@ uvicorn app.main:app --reload
 **Aplikacja:** http://127.0.0.1:8000  
 **API Docs:** http://127.0.0.1:8000/docs
 
-## 📁 Struktura
 
-```
-app/
-├── api/imgw_client.py          # Klient API IMGW
-├── logic/
-│   ├── nlp.py                  # Przetwarzanie języka
-│   └── conversation.py         # Maszyna stanów
-├── services/data_service.py    # Walidacja i geolokalizacja
-├── data/*.json                 # Mapy TERYT i stacji
-└── main.py                     # FastAPI endpointy
-static/                         # Frontend (HTML/CSS/JS)
-scripts/                        # Skrypty pomocnicze
-```
 
 ## 🧪 Przykłady
 
