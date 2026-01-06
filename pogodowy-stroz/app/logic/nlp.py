@@ -102,7 +102,25 @@ class NLPService:
             'radunia', 'raduni',
             'bystrzyca', 'bystrzyce'
         }
-
+        # WOJEWÓDZTWA
+        self.VOIVODESHIPS = {
+            'dolnośląskie', 'dolnoslaskie', 'dolnośląska', 'dolnoslaska',
+            'kujawsko-pomorskie', 'kujawsko-pomorska',
+            'lubelskie', 'lubelska',
+            'lubuskie', 'lubuska',
+            'łódzkie', 'lodzkie', 'łódzka', 'lodzka',
+            'małopolskie', 'malopolskie', 'małopolska', 'malopolska',
+            'mazowieckie', 'mazowiecka',
+            'opolskie', 'opolska',
+            'podkarpackie', 'podkarpacka',
+            'podlaskie', 'podlaska',
+            'pomorskie', 'pomorska',
+            'śląskie', 'slaskie', 'śląska', 'slaska',
+            'świętokrzyskie', 'swietokrzyskie', 'świętokrzyska', 'swietokrzyska',
+            'warmińsko-mazurskie', 'warminsko-mazurskie', 'warmińsko-mazurska', 'warminsko-mazurska',
+            'wielkopolskie', 'wielkopolska',
+            'zachodniopomorskie', 'zachodniopomorska',
+        }
         # SŁOWA KLUCZOWE Z WAGAMI
         self.KEYWORDS = {
             'ostrzeżenia': {
@@ -121,17 +139,32 @@ class NLPService:
                 'porywy': 2, 'silny': 1
             },
             'hydro': {
-                'woda': 3, 'wody': 3,
-                'rzeka': 3, 'rzeki': 3, 'rzeką': 3,
-                'stan': 2, 'stanu': 2,
-                'poziom': 3, 'poziomu': 3,
+                'woda': 3, 'wody': 3, 'wodzie': 3,
+                'rzeka': 3, 'rzeki': 3, 'rzeką': 3, 'rzece': 3,
+                'stan': 2, 'stanu': 2, 'stany': 2,
+                'poziom': 3, 'poziomu': 3, 'poziomie': 3,
                 'wodowskaz': 3, 'wodowskazu': 3,
-                'powódź': 3, 'powodz': 3,
+                'powódź': 3, 'powodz': 3, 'powodzi': 3,
                 'podtopienie': 3, 'wezbranie': 3,
-                'hydro': 3, 'hydrologia': 3,
-                'potok': 2, 'strumień': 2,
-                'wisła': 2, 'wisla': 2, 'odra': 2, 'warta': 2,
-                'bug': 2, 'narew': 2, 'san': 2, 'noteć': 2, 'notec': 2,
+                'hydro': 3, 'hydrologia': 3, 'hydrologiczny': 3,
+                'potok': 2, 'strumień': 2, 'strumien': 2,
+                # Główne rzeki
+                'wisła': 3, 'wisla': 3, 'wiśle': 3, 'wisle': 3,
+                'odra': 3, 'odrze': 3,
+                'warta': 3, 'warcie': 3,
+                'bug': 3, 'bugu': 3,
+                'narew': 3, 'narwi': 3,
+                'san': 3, 'sanie': 3, 'sanu': 3,
+                'noteć': 3, 'notec': 3, 'noteci': 3,
+                'dunajec': 3, 'dunajcu': 3,
+                'pilica': 3, 'pilicy': 3,
+                'bóbr': 3, 'bobr': 3, 'bobrze': 3,
+                'nysa': 3, 'nysie': 3,
+                # Dodatkowe dane
+                'przepływ': 3, 'przeplyw': 3,
+                'temperatura': 1,  # niska waga, bo może być pogoda
+                'lód': 2, 'lod': 2, 'lodowy': 2, 'lodowe': 2,
+                'zarastanie': 2,
             },
             'pogoda': {
                 'pogoda': 3, 'pogody': 3, 'pogodę': 3, 'pogode': 3,
@@ -320,6 +353,11 @@ class NLPService:
         locations = {'placeName': [], 'geogName': []}
         text_lower = text.lower()
 
+        # Szukaj województw
+        for voivodeship in self.VOIVODESHIPS:
+            if voivodeship in text_lower:
+                if voivodeship not in locations['geogName']:
+                    locations['geogName'].append(voivodeship)
         # Szukaj znanych rzek
         for river in self.KNOWN_RIVERS:
             if river in text_lower:

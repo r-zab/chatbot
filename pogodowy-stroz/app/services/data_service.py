@@ -16,6 +16,33 @@ class DataService:
         current_dir = Path(__file__).resolve().parent
         data_dir = current_dir.parent / "data"
 
+        # KODY ZJAWISK LODOWYCH (z dokumentacji IMGW)
+        self.ICE_PHENOMENA = {
+            '0': 'brak zjawisk',
+            '01': 'śryż',
+            '1': 'śryż',
+            '02': 'kra',
+            '2': 'kra',
+            '03': 'lód brzegowy',
+            '3': 'lód brzegowy',
+            '04': 'pokrywa lodowa',
+            '4': 'pokrywa lodowa',
+            '05': 'zator lodowy',
+            '5': 'zator lodowy',
+            '06': 'lód brzegowy i śryż',
+            '6': 'lód brzegowy i śryż',
+            '07': 'lód brzegowy i kra',
+            '7': 'lód brzegowy i kra',
+            '08': 'śryż i kra',
+            '8': 'śryż i kra',
+            '09': 'zator śryżowy',
+            '9': 'zator śryżowy',
+            '32': 'lód zatokowy',
+            '41': 'woda na lodzie',
+            '42': 'lód pływający (wolny od brzegów)',
+            '43': 'lód zmurszały (dziurawy)',
+        }
+
         # STOPWORDS
         self.STOPWORDS = {
             'w', 'na', 'z', 'do', 'od', 'dla', 'koło', 'obok', 'przy', 'pod', 'nad',
@@ -53,9 +80,12 @@ class DataService:
             'brdzie': 'brda', 'brdy': 'brda',
             'gwdzie': 'gwda', 'gwdy': 'gwda',
             'biebrzy': 'biebrza', 'biebrzą': 'biebrza',
+            'elblagu': 'elblag', 'elbląg': 'elblag', 'elblągu': 'elblag',
+            'regalicy': 'regalica', 'regalicą': 'regalica',
+            'wieprzy': 'wieprza', 'wieprzą': 'wieprza',
         }
 
-        # GŁÓWNE RZEKI (hardcoded)
+        # GŁÓWNE RZEKI -> ID stacji (reprezentatywna stacja)
         self.MAIN_RIVERS = {
             'wisla': '149180140',
             'odra': '153140020',
@@ -87,6 +117,45 @@ class DataService:
             'parseta': '154150040',
             'rega': '153150050',
             'radunia': '154180060',
+            'elblag': '154190060',
+            'regalica': '153140190',
+            'wieprza': '154160150',
+        }
+
+        # WOJEWÓDZTWA - prefiksy kodów TERYT
+        self.VOIVODESHIPS = {
+            'dolnoslaskie': '02',
+            'dolnoslaska': '02',
+            'kujawsko-pomorskie': '04',
+            'kujawsko-pomorska': '04',
+            'lubelskie': '06',
+            'lubelska': '06',
+            'lubuskie': '08',
+            'lubuska': '08',
+            'lodzkie': '10',
+            'lodzka': '10',
+            'malopolskie': '12',
+            'malopolska': '12',
+            'mazowieckie': '14',
+            'mazowiecka': '14',
+            'opolskie': '16',
+            'opolska': '16',
+            'podkarpackie': '18',
+            'podkarpacka': '18',
+            'podlaskie': '20',
+            'podlaska': '20',
+            'pomorskie': '22',
+            'pomorska': '22',
+            'slaskie': '24',
+            'slaska': '24',
+            'swietokrzyskie': '26',
+            'swietokrzyska': '26',
+            'warminsko-mazurskie': '28',
+            'warminsko-mazurska': '28',
+            'wielkopolskie': '30',
+            'wielkopolska': '30',
+            'zachodniopomorskie': '32',
+            'zachodniopomorska': '32',
         }
 
         # Ładowanie danych
@@ -111,7 +180,8 @@ class DataService:
             except:
                 self.station_coords = {}
 
-            print(f"✅ DataService: {len(self.simc_dict)} miast, {len(self.terc_dict)} powiatów")
+            print(
+                f"✅ DataService: 🏙️ {len(self.simc_dict)} miast, 🗺️ {len(self.terc_dict)} powiatów, 🌊 {len(self.map_hydro)} stacji hydro")
 
         except Exception as e:
             print(f"❌ BŁĄD: {e}")
@@ -155,18 +225,54 @@ class DataService:
         deg = deg % 360
 
         directions = [
-            "Północ",
-            "Północny Wschód",
-            "Wschód",
-            "Południowy Wschód",
-            "Południe",
-            "Południowy Zachód",
-            "Zachód",
-            "Północny Zachód"
+            "N", "NE", "E", "SE",
+            "S", "SW", "W", "NW"
         ]
 
         index = int((deg + 22.5) / 45) % 8
         return directions[index]
+
+    def _decode_ice_phenomenon(self, code) -> str:
+        """Dekoduje kod zjawiska lodowego."""
+        if code is None or code == '' or code == 'null':
+            return None
+
+        code_str = str(code).strip()
+
+        if code_str == '0':
+            return None
+
+        return self.ICE_PHENOMENA.get(code_str, f"zjawisko {code_str}")
+
+    def _decode_overgrowth(self, code) -> str:
+        """Dekoduje kod zarastania."""
+        if code is None or code == '' or code == 'null' or code == '0':
+            return None
+
+        code_str = str(code).strip().zfill(3)
+
+        if len(code_str) != 3:
+            return None
+
+        try:
+            d, p, w = int(code_str[0]), int(code_str[1]), int(code_str[2])
+        except ValueError:
+            return None
+
+        if d == 0 and p == 0 and w == 0:
+            return None
+
+        levels = {0: 'brak', 1: '1/3', 2: '2/3', 3: 'całkowite'}
+        parts = []
+
+        if d > 0:
+            parts.append(f"denna: {levels[d]}")
+        if p > 0:
+            parts.append(f"pływająca: {levels[p]}")
+        if w > 0:
+            parts.append(f"wystająca: {levels[w]}")
+
+        return ", ".join(parts) if parts else None
 
     def _generate_candidates(self, text: str) -> list[str]:
         norm_text = self._normalize(text)
@@ -242,6 +348,8 @@ class DataService:
         all_candidates = nlp_candidates + text_candidates
         all_candidates = list(dict.fromkeys(all_candidates))
 
+        print(f"   🔍 Kandydaci: {all_candidates}")
+
         # ==================== HYDRO ====================
         if intent == 'hydro':
             for candidate in all_candidates:
@@ -249,12 +357,15 @@ class DataService:
                     continue
 
                 normalized = self._normalize_river(candidate)
+                print(f"   🌊 Sprawdzam rzekę: '{candidate}' -> '{normalized}'")
 
                 if normalized in self.MAIN_RIVERS:
+                    print(f"   ✅ Znaleziono główną rzekę: {normalized}")
                     return {
-                        "type": "hydro",
+                        "type": "hydro_river",
                         "id": self.MAIN_RIVERS[normalized],
-                        "name": normalized.title()
+                        "name": normalized.title(),
+                        "river_name": normalized
                     }
 
                 if normalized in self.map_hydro:
@@ -265,7 +376,7 @@ class DataService:
                     }
 
                 for key in self.map_hydro.keys():
-                    if key.startswith(normalized + " "):
+                    if key.startswith(normalized + " ") or normalized in key.split():
                         return {
                             "type": "hydro",
                             "id": self.map_hydro[key],
@@ -302,7 +413,6 @@ class DataService:
                             "name": best.title()
                         }
 
-            # Fallback - geolokalizacja
             if all_candidates:
                 valid = [c for c in all_candidates if c not in self.STOPWORDS and len(c) >= 4]
                 if valid:
@@ -313,6 +423,16 @@ class DataService:
 
         # ==================== OSTRZEŻENIA ====================
         elif intent == 'ostrzeżenia':
+            # Najpierw sprawdź województwa
+            for candidate in all_candidates:
+                if candidate in self.VOIVODESHIPS:
+                    return {
+                        "type": "voivodeship",
+                        "id": self.VOIVODESHIPS[candidate],
+                        "name": candidate.title()
+                    }
+
+            # Potem powiaty
             all_powiats = list(self.terc_dict.keys())
 
             for candidate in all_candidates:
@@ -343,16 +463,54 @@ class DataService:
 
         return None
 
+    def _select_best_stations(self, stations: list, max_count: int = 3) -> list:
+        """
+        Wybiera najważniejsze stacje do wyświetlenia.
+        Priorytet: stacje z zjawiskami lodowymi, wysokim przepływem, lub z pełnymi danymi.
+        """
+        if len(stations) <= max_count:
+            return stations
+
+        scored = []
+        for s in stations:
+            score = 0
+
+            # Zjawisko lodowe - wysoki priorytet
+            ice = s.get('zjawisko_lodowe')
+            if ice and ice != '0' and ice != '' and ice != 'null':
+                score += 100
+
+            # Kompletność danych
+            if s.get('przelyw') and s.get('przelyw') != 'null':
+                score += 10
+            if s.get('temperatura_wody') and s.get('temperatura_wody') != 'null':
+                score += 5
+
+            # Wyższy przepływ = ważniejsza stacja
+            try:
+                flow = float(s.get('przelyw', 0) or 0)
+                score += min(flow / 10, 50)  # max 50 punktów za przepływ
+            except:
+                pass
+
+            scored.append((score, s))
+
+        # Sortuj malejąco po score
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        return [s for _, s in scored[:max_count]]
+
     async def fetch_data(self, intent: str, location_data: dict) -> str:
         """Pobiera dane z API IMGW i formatuje odpowiedź."""
         try:
             loc_id = location_data['id']
             loc_name = location_data.get('name', 'Nieznane')
+            loc_type = location_data.get('type', '')
 
             # ==================== POGODA ====================
             if intent == 'pogoda':
                 prefix = ""
-                if location_data.get('type') == 'nearest':
+                if loc_type == 'nearest':
                     user_city = location_data.get('user_city', '?').title()
                     station_name = location_data.get('station_name', '?')
                     distance = location_data.get('distance', '?')
@@ -374,100 +532,238 @@ class DataService:
 
                 wind_direction = self._degrees_to_direction(wind_dir_deg)
 
-                # 🔥 FORMATOWANIE - kierunek w nowej linii
-                response = f"{prefix}🏙️ {station}\n"
+                response = f"{prefix}📍 {station}\n"
                 response += f"🌡️ Temperatura: {temp}°C\n"
-                response += f"💨 Wiatr: {wind_speed} m/s\n"
+                response += f"💨 Wiatr: {wind_speed} m/s"
 
                 if wind_direction:
-                    response += f"🧭 Kierunek: {wind_direction}\n"
+                    response += f" ({wind_direction})"
 
-                response += f"🌧️ Opady: {rain} mm"
+                response += f"\n☔ Opady: {rain} mm"
 
                 if pressure and pressure != 'null' and pressure is not None:
-                    response += f"\n🔵 Ciśnienie: {pressure} hPa"
+                    response += f"\n🔽 Ciśnienie: {pressure} hPa"
                 if humidity and humidity != 'null' and humidity is not None:
                     response += f"\n💧 Wilgotność: {humidity}%"
 
                 if date and hour:
-                    response += f"\n\n📅 Pomiar: {date}, godz. {hour}:00"
+                    response += f"\n\n🕐 Pomiar: {date}, godz. {hour}:00"
 
                 return response
 
             # ==================== HYDRO ====================
             elif intent == 'hydro':
-                data = await self.imgw_client.get_hydro_data(loc_id)
-                if isinstance(data, list):
-                    data = data[0] if data else {}
+                if loc_type == 'hydro_river':
+                    river_name = location_data.get('river_name', loc_name)
+                    return await self._fetch_river_data(river_name, loc_id)
 
-                river = data.get('rzeka', loc_name)
-                station = data.get('stacja', '?')
-                water_level = data.get('stan_wody', '?')
-                water_temp = data.get('temperatura_wody', None)
-                date = data.get('data_pomiaru', '')
-                hour = data.get('godzina_pomiaru', '')
-
-                response = f"🏞️ {river}\n"
-                response += f"📍 Stacja: {station}\n"
-                response += f"🌊 Stan wody: {water_level} cm"
-
-                if water_temp and water_temp != 'null':
-                    response += f"\n🌡️ Temp. wody: {water_temp}°C"
-
-                if date and hour:
-                    response += f"\n\n📅 Pomiar: {date}, godz. {hour}:00"
-
-                return response
+                return await self._fetch_single_hydro_station(loc_id, loc_name)
 
             # ==================== OSTRZEŻENIA ====================
             elif intent == 'ostrzeżenia':
                 warnings = await self.imgw_client.get_meteo_warnings()
 
                 if isinstance(warnings, dict):
-                    return "❌ Błąd API ostrzeżeń."
+                    return "⚠️ Błąd API ostrzeżeń."
 
                 if not isinstance(warnings, list):
-                    return "❌ Nieoczekiwany format danych."
+                    return "⚠️ Nieoczekiwany format danych."
 
                 found = []
 
-                for w in warnings:
-                    teryt_codes = w.get('teryt', [])
+                # Obsługa województwa - znajdź wszystkie ostrzeżenia dla powiatów w tym województwie
+                if loc_type == 'voivodeship':
+                    voivodeship_prefix = loc_id
 
-                    if isinstance(teryt_codes, str):
-                        teryt_codes = [teryt_codes]
+                    for w in warnings:
+                        teryt_codes = w.get('teryt', [])
+                        if isinstance(teryt_codes, str):
+                            teryt_codes = [teryt_codes]
 
-                    if loc_id in teryt_codes:
-                        nazwa = w.get('nazwa_zdarzenia', 'Alert')
-                        stopien = w.get('stopien', '?')
-                        od = w.get('obowiazuje_od', '')
-                        do = w.get('obowiazuje_do', '')
-                        tresc = w.get('tresc', '')
-                        prawdop = w.get('prawdopodobienstwo', '')
+                        # Sprawdź czy jakikolwiek kod TERYT należy do tego województwa
+                        matching_codes = [code for code in teryt_codes if code.startswith(voivodeship_prefix)]
 
-                        alert = f"⚠️ {nazwa} (stopień {stopien})"
+                        if matching_codes:
+                            nazwa = w.get('nazwa_zdarzenia', 'Alert')
+                            stopien = w.get('stopien', '?')
+                            od = w.get('obowiazuje_od', '')
+                            do = w.get('obowiazuje_do', '')
+                            tresc = w.get('tresc', '')
+                            prawdop = w.get('prawdopodobienstwo', '')
 
-                        if prawdop:
-                            alert += f"\n   📊 Prawdopodobieństwo: {prawdop}%"
-                        if od:
-                            alert += f"\n   🕐 Od: {od}"
-                        if do:
-                            alert += f"\n   🕐 Do: {do}"
-                        if tresc:
-                            if len(tresc) > 150:
-                                tresc = tresc[:150] + "..."
-                            alert += f"\n   📝 {tresc}"
+                            # Znajdź nazwy powiatów dla tego ostrzeżenia
+                            powiat_names = []
+                            for code in matching_codes:
+                                if code in self.terc_reverse:
+                                    powiat_names.append(self.terc_reverse[code])
 
-                        found.append(alert)
+                            alert = f"⚠️ {nazwa} (stopień {stopien})"
+
+                            if powiat_names:
+                                alert += f"\n📍 Powiaty: {', '.join(powiat_names[:5])}"
+                                if len(powiat_names) > 5:
+                                    alert += f" (+{len(powiat_names) - 5} więcej)"
+
+                            if prawdop:
+                                alert += f"\n📊 Prawdopodobieństwo: {prawdop}%"
+                            if od:
+                                alert += f"\n🕐 Od: {od}"
+                            if do:
+                                alert += f"\n🕐 Do: {do}"
+                            if tresc:
+                                if len(tresc) > 200:
+                                    tresc = tresc[:200] + "..."
+                                alert += f"\n📝 {tresc}"
+
+                            # Unikaj duplikatów tego samego typu ostrzeżenia
+                            alert_key = f"{nazwa}_{stopien}"
+                            if not any(alert_key in str(a) for a in found):
+                                found.append(alert)
+
+                # Obsługa pojedynczego powiatu
+                else:
+                    for w in warnings:
+                        teryt_codes = w.get('teryt', [])
+
+                        if isinstance(teryt_codes, str):
+                            teryt_codes = [teryt_codes]
+
+                        if loc_id in teryt_codes:
+                            nazwa = w.get('nazwa_zdarzenia', 'Alert')
+                            stopien = w.get('stopien', '?')
+                            od = w.get('obowiazuje_od', '')
+                            do = w.get('obowiazuje_do', '')
+                            tresc = w.get('tresc', '')
+                            prawdop = w.get('prawdopodobienstwo', '')
+
+                            alert = f"⚠️ {nazwa} (stopień {stopien})"
+
+                            if prawdop:
+                                alert += f"\n📊 Prawdopodobieństwo: {prawdop}%"
+                            if od:
+                                alert += f"\n🕐 Od: {od}"
+                            if do:
+                                alert += f"\n🕐 Do: {do}"
+                            if tresc:
+                                if len(tresc) > 200:
+                                    tresc = tresc[:200] + "..."
+                                alert += f"\n📝 {tresc}"
+
+                            found.append(alert)
 
                 if found:
-                    header = f"🚨 Ostrzeżenia dla {loc_name}:\n\n"
+                    if loc_type == 'voivodeship':
+                        header = f"⚠️ Ostrzeżenia dla województwa {loc_name}:\n\n"
+                    else:
+                        header = f"⚠️ Ostrzeżenia dla {loc_name}:\n\n"
                     return header + "\n\n".join(found)
 
-                return f"✅ Brak ostrzeżeń dla {loc_name}."
+                return f"✅ Brak aktywnych ostrzeżeń dla {loc_name}."
 
         except Exception as e:
             print(f"❌ Błąd: {e}")
             return f"❌ Błąd pobierania danych: {e}"
 
         return "❓ Nieznana intencja."
+
+    async def _fetch_river_data(self, river_name: str, fallback_id: str) -> str:
+        """Pobiera dane dla całej rzeki (wybrane stacje)."""
+        try:
+            stations = await self.imgw_client.get_hydro_by_river(river_name)
+
+            if not stations:
+                return await self._fetch_single_hydro_station(fallback_id, river_name)
+
+            river_display = stations[0].get('rzeka', river_name.title())
+            total_count = len(stations)
+
+            # Wybierz max 3 najważniejsze stacje
+            best_stations = self._select_best_stations(stations, max_count=3)
+
+            response = f"🌊 {river_display} - {total_count} stacji pomiarowych\n"
+            response += "-" * 35 + "\n\n"
+
+            for i, station in enumerate(best_stations):
+                response += self._format_hydro_station(station, compact=(i > 0))
+                if i < len(best_stations) - 1:
+                    response += "\n"
+
+            if total_count > 3:
+                response += f"\n\n📌 Pozostałe stacje: {total_count - 3}"
+                response += "\n💡 Podaj nazwę stacji dla szczegółów."
+
+            return response
+
+        except Exception as e:
+            print(f"❌ Błąd pobierania rzeki: {e}")
+            return await self._fetch_single_hydro_station(fallback_id, river_name)
+
+    async def _fetch_single_hydro_station(self, station_id: str, name: str) -> str:
+        """Pobiera dane dla pojedynczej stacji hydrologicznej."""
+        data = await self.imgw_client.get_hydro_data(station_id)
+        if isinstance(data, list):
+            data = data[0] if data else {}
+
+        return self._format_hydro_station(data, compact=False)
+
+    def _format_hydro_station(self, data: dict, compact: bool = False) -> str:
+        """Formatuje dane stacji hydrologicznej."""
+        river = data.get('rzeka', '?')
+        station = data.get('stacja', '?')
+        voivodeship = data.get('wojewodztwo', '')
+        water_level = data.get('stan_wody', '?')
+        water_temp = data.get('temperatura_wody', None)
+        flow = data.get('przelyw', None)
+        date = data.get('stan_wody_data_pomiaru', '')
+
+        ice_code = data.get('zjawisko_lodowe', None)
+        overgrowth_code = data.get('zjawisko_zarastania', None)
+
+        if compact:
+            # Wersja skrócona - jedna linia główna + opcjonalnie lód
+            loc_info = f"📍 {station}"
+            if voivodeship:
+                loc_info += f" ({voivodeship})"
+
+            response = f"{loc_info}\n"
+            response += f"  💧 Stan: {water_level} cm"
+
+            if flow and flow != 'null':
+                response += f", 🌊 przepływ: {flow} m³/s"
+
+            if water_temp and water_temp != 'null':
+                response += f", 🌡️ temp: {water_temp}°C"
+
+            ice_desc = self._decode_ice_phenomenon(ice_code)
+            if ice_desc:
+                response += f"\n  🧊 Lód: {ice_desc}"
+
+            return response
+
+        # Wersja pełna (pierwsza stacja lub pojedyncza)
+        response = f"🌊 {river}\n"
+        response += f"📍 Stacja: {station}"
+        if voivodeship:
+            response += f" ({voivodeship})"
+        response += "\n\n"
+
+        response += f"💧 Stan wody: {water_level} cm\n"
+
+        if flow and flow != 'null':
+            response += f"🌊 Przepływ: {flow} m³/s\n"
+
+        if water_temp and water_temp != 'null':
+            response += f"🌡️ Temp. wody: {water_temp}°C\n"
+
+        ice_desc = self._decode_ice_phenomenon(ice_code)
+        if ice_desc:
+            response += f"🧊 Zjawisko lodowe: {ice_desc}\n"
+
+        overgrowth_desc = self._decode_overgrowth(overgrowth_code)
+        if overgrowth_desc:
+            response += f"🌿 Zarastanie: {overgrowth_desc}\n"
+
+        if date:
+            response += f"\n🕐 Pomiar: {date}"
+
+        return response
