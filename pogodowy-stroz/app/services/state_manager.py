@@ -1,4 +1,7 @@
+# /app/services/state_manager.py
+
 from app.logic.conversation import ChatbotLogic
+
 
 # Magazyn sesji w pamięci
 user_sessions: dict[str, ChatbotLogic] = {}

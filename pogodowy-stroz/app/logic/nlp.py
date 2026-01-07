@@ -1,11 +1,25 @@
 # app/logic/nlp.py
+
 import spacy
 from collections import defaultdict
+from typing import Optional, Tuple, Dict, List
+
+try:
+    from app.services.llm_service import LLMService
+except ImportError:
+    LLMService = None
 
 
 class NLPService:
-    def __init__(self):
-        # 🔥 ROZBUDOWANY SMALL TALK
+    def __init__(self, use_llm: bool = True, llm_provider: str = "ollama"):
+        self.use_llm = use_llm
+        self.llm_service: Optional[LLMService] = None
+        self.llm_available = False
+
+        if use_llm and LLMService:
+            self._init_llm(llm_provider)
+
+        # ========== SMALL TALK ==========
         self.GREETINGS = {
             'cześć', 'czesc', 'czesd', 'hej', 'siema', 'elo', 'yo', 'hejo',
             'witaj', 'witam', 'dzień dobry', 'dzien dobry', 'dobry wieczór',
@@ -21,7 +35,8 @@ class NLPService:
             'nara', 'na razie', 'narazie', 'narka',
             'do zobaczenia', 'dozobaczenia', 'trzymaj się', 'trzymaj sie',
             'dobra', 'git', 'spoko', 'super', 'fajnie', 'elegancko',
-            'koniec', 'wystarczy', 'to tyle', 'tyle'
+            'koniec', 'wystarczy', 'to tyle', 'tyle','dobra koniec', 'ok to tyle', 'to tyle', 'koniec',
+            'wystarczy', 'to wszystko', 'to na tyle',
         }
 
         self.THANKS = {
@@ -38,7 +53,6 @@ class NLPService:
             'kim jesteś', 'kim jestes', 'kto to', 'co to'
         }
 
-        # 🔥 NOWE: Rzeczy których bot NIE UMIE
         self.CANT_DO_KEYWORDS = {
             'zrób', 'zrob', 'zrobić', 'zrobic', 'wygeneruj', 'generuj', 'stwórz', 'stworz',
             'narysuj', 'namaluj', 'pokaż', 'pokaz', 'wyświetl', 'wyswietl',
@@ -59,7 +73,6 @@ class NLPService:
             'mail', 'email', 'wiadomość', 'wiadomosc', 'sms'
         }
 
-        # 🔥 NOWE: Bzdury / nonsens
         self.NONSENSE_PATTERNS = {
             'asdf', 'qwer', 'zxcv', 'aaa', 'bbb', 'ccc', 'ddd',
             'xxx', 'yyy', 'zzz', 'abc', 'test', 'testing',
@@ -67,7 +80,41 @@ class NLPService:
             'blabla', 'lalala', 'dadada', 'nanana', 'tralala'
         }
 
-        # Lista znanych rzek (żeby nie mylić z innymi słowami)
+        # 🔥 SŁOWA KLUCZOWE DLA PROGNOZY
+        self.FORECAST_KEYWORDS = {
+            'jutro', 'pojutrze', 'za tydzień', 'za tydzien', 'w weekend',
+            'w sobotę', 'w sobote', 'w niedzielę', 'w niedziele',
+            'za godzinę', 'za godzine', 'za 2 godziny', 'wieczorem',
+            'rano', 'w nocy', 'prognoza na', 'będzie padać', 'bedzie padac',
+            'będzie wiać', 'bedzie wiac', 'czy będzie', 'czy bedzie',
+            'przewidywana', 'przewidywany', 'spodziewana', 'spodziewany',
+            'w przyszłym tygodniu', 'w przyszlym tygodniu',
+            'na tydzień', 'na tydzien', 'na weekend',
+        }
+
+        # 🔥 SŁOWA DO PYTANIA O LISTĘ STACJI
+        self.LIST_KEYWORDS = {
+            'lista', 'listę', 'liste', 'wszystkie', 'jakie',
+            'które', 'ktore', 'pokaz', 'pokaż', 'wymień', 'wymien',
+            'stacje', 'stacji', 'stacja', 'punkty', 'punktów', 'punktow',
+            'wodowskazy', 'wodowskazów', 'wodowskazow',
+            'pomiarowe', 'pomiarowych', 'dostępne', 'dostepne',
+        }
+
+        # 🔥 SŁOWA DO PYTANIA O POWIATY (NOWE!)
+        self.COUNTY_LIST_KEYWORDS = {
+            'powiaty', 'powiatów', 'powiatow', 'powiat',
+            'które powiaty', 'ktore powiaty',
+            'jakie powiaty', 'dla jakich powiatów',
+            'lista powiatów', 'lista powiatow', 'listę powiatów',
+            'wszystkie powiaty', 'pełna lista', 'pelna lista',
+            'więcej powiatów', 'wiecej powiatow',
+            'pozostałe powiaty', 'pozostale powiaty',
+            'gdzie jeszcze', 'gdzie obowiązuje', 'gdzie obowiazuje',
+            'dotknięte', 'dotkniete', 'objęte', 'objete',
+        }
+
+        # ========== RZEKI ==========
         self.KNOWN_RIVERS = {
             'wisła', 'wisla', 'wiśle', 'wisle', 'wisły', 'wisly',
             'odra', 'odrze', 'odry',
@@ -102,7 +149,35 @@ class NLPService:
             'radunia', 'raduni',
             'bystrzyca', 'bystrzyce'
         }
-        # WOJEWÓDZTWA
+
+        # 🔥 JEZIORA I ZBIORNIKI
+        self.KNOWN_LAKES = {
+            'mamry', 'śniardwy', 'sniardwy', 'niegocin', 'jeziorak',
+            'łebsko', 'lebsko', 'drawsko', 'miedwie', 'jamno',
+            'gopło', 'goplo', 'wigry', 'hańcza', 'hancza',
+            'solina', 'solinskie', 'solińskie',
+            'zegrzyński', 'zegrzynski', 'zegrze',
+            'włocławski', 'wloclawski', 'włocławek', 'wloclawek',
+            'czorsztyński', 'czorsztynski', 'czorsztyn',
+            'rożnowski', 'roznowski', 'rożnów', 'roznow',
+            'dobczycki', 'dobczyce',
+            'żywiecki', 'zywiecki', 'żywiec', 'zywiec',
+            'otmuchowski', 'otmuchów', 'otmuchow',
+            'nyski', 'nysa',
+            'turawski', 'turawa',
+            'koronowski', 'koronowo',
+        }
+
+        # 🔥 BAŁTYK
+        self.BALTIC_KEYWORDS = {
+            'bałtyk', 'baltyk', 'bałtyku', 'baltyku', 'bałtycki', 'baltycki',
+            'morze', 'morza', 'morzu',
+            'zatoka', 'zatoki', 'zatoce',
+            'zalew', 'zalewu', 'zalewem',
+            'wiślany', 'wislany', 'szczeciński', 'szczecinski',
+        }
+
+        # ========== WOJEWÓDZTWA ==========
         self.VOIVODESHIPS = {
             'dolnośląskie', 'dolnoslaskie', 'dolnośląska', 'dolnoslaska',
             'kujawsko-pomorskie', 'kujawsko-pomorska',
@@ -117,11 +192,20 @@ class NLPService:
             'pomorskie', 'pomorska',
             'śląskie', 'slaskie', 'śląska', 'slaska',
             'świętokrzyskie', 'swietokrzyskie', 'świętokrzyska', 'swietokrzyska',
-            'warmińsko-mazurskie', 'warminsko-mazurskie', 'warmińsko-mazurska', 'warminsko-mazurska',
+            'warmińsko-mazurskie', 'warminsko-mazurskie', 'warmińsko-mazurska',
             'wielkopolskie', 'wielkopolska',
-            'zachodniopomorskie', 'zachodniopomorska',
+            'zachodniopomorskie', 'zachodniopomorska'
         }
-        # SŁOWA KLUCZOWE Z WAGAMI
+
+        # 🔥 REGIONY
+        self.REGIONS = {
+            'śląsk', 'slask', 'mazowsze', 'podlasie', 'wielkopolska',
+            'małopolska', 'malopolska', 'pomorze', 'kaszuby', 'kujawy',
+            'warmia', 'mazury', 'podhale', 'lubelszczyzna', 'opolszczyzna',
+            'podkarpacie', 'galicja',
+        }
+
+        # ========== SŁOWA KLUCZOWE Z WAGAMI ==========
         self.KEYWORDS = {
             'ostrzeżenia': {
                 'ostrzeżenie': 3, 'ostrzezenie': 3,
@@ -136,7 +220,7 @@ class NLPService:
                 'gołoledź': 2, 'gololedz': 2,
                 'upał': 2, 'upal': 2,
                 'meteo': 2, 'imgw': 2,
-                'porywy': 2, 'silny': 1
+                'porywy': 2, 'silny': 1,
             },
             'hydro': {
                 'woda': 3, 'wody': 3, 'wodzie': 3,
@@ -148,23 +232,25 @@ class NLPService:
                 'podtopienie': 3, 'wezbranie': 3,
                 'hydro': 3, 'hydrologia': 3, 'hydrologiczny': 3,
                 'potok': 2, 'strumień': 2, 'strumien': 2,
-                # Główne rzeki
                 'wisła': 3, 'wisla': 3, 'wiśle': 3, 'wisle': 3,
                 'odra': 3, 'odrze': 3,
                 'warta': 3, 'warcie': 3,
                 'bug': 3, 'bugu': 3,
                 'narew': 3, 'narwi': 3,
                 'san': 3, 'sanie': 3, 'sanu': 3,
-                'noteć': 3, 'notec': 3, 'noteci': 3,
-                'dunajec': 3, 'dunajcu': 3,
-                'pilica': 3, 'pilicy': 3,
-                'bóbr': 3, 'bobr': 3, 'bobrze': 3,
-                'nysa': 3, 'nysie': 3,
-                # Dodatkowe dane
                 'przepływ': 3, 'przeplyw': 3,
-                'temperatura': 1,  # niska waga, bo może być pogoda
-                'lód': 2, 'lod': 2, 'lodowy': 2, 'lodowe': 2,
-                'zarastanie': 2,
+                'jezioro': 3, 'jeziora': 3, 'jeziorze': 3,
+                'zbiornik': 3, 'zbiornika': 3, 'zbiorniku': 3,
+                'zalew': 3, 'zalewu': 3,
+                'bałtyk': 3, 'baltyk': 3, 'morze': 3, 'morza': 3,
+                'mamry': 3, 'śniardwy': 3, 'sniardwy': 3,
+            },
+            'hydro_lista': {
+                'lista': 3, 'listę': 3, 'liste': 3,
+                'wszystkie': 2, 'jakie': 2,
+                'stacje': 3, 'stacji': 3,
+                'wodowskazy': 3, 'punkty': 2,
+                'dostępne': 2, 'dostepne': 2,
             },
             'pogoda': {
                 'pogoda': 3, 'pogody': 3, 'pogodę': 3, 'pogode': 3,
@@ -178,11 +264,11 @@ class NLPService:
                 'chmura': 2, 'chmury': 2, 'zachmurzenie': 2,
                 'deszcz': 2, 'deszczu': 2, 'pada': 2, 'padać': 2,
                 'śnieg': 1, 'snieg': 1, 'opad': 1, 'opady': 1,
-                'jutro': 2, 'dziś': 2, 'dzis': 2, 'dzisiaj': 2,
+                'dziś': 2, 'dzis': 2, 'dzisiaj': 2, 'teraz': 2,
+                'aktualnie': 2, 'obecnie': 2,
                 'jaka': 2, 'jaki': 2, 'jakie': 2, 'ile': 2,
                 'wiatr': 2, 'wiatru': 2, 'wieje': 2,
-                'prędkość': 3, 'predkosc': 3, 'kierunek': 2,
-            }
+            },
         }
 
         self.BIGRAM_BONUSES = {
@@ -199,7 +285,13 @@ class NLPService:
                 ('stan', 'woda'), ('stan', 'wody'),
                 ('poziom', 'woda'), ('poziom', 'wody'),
                 ('stan', 'rzeka'), ('stan', 'rzeki'),
-            ]
+                ('stan', 'jezioro'), ('stan', 'jeziora'),
+                ('stan', 'morze'), ('stan', 'morza'),
+            ],
+            'hydro_lista': [
+                ('lista', 'stacji'), ('lista', 'stacje'),
+                ('jakie', 'stacje'), ('wszystkie', 'stacje'),
+            ],
         }
 
         try:
@@ -208,8 +300,27 @@ class NLPService:
             print("⚠️ Brak modelu spaCy!")
             self.nlp = None
 
+    def _init_llm(self, provider: str):
+        try:
+            self.llm_service = LLMService(provider=provider)
+            print(f"✅ LLM Service zainicjalizowany (provider: {provider})")
+        except Exception as e:
+            print(f"⚠️ Nie udało się zainicjalizować LLM: {e}")
+            self.llm_service = None
+
+    async def check_llm_availability(self) -> bool:
+        if not self.llm_service:
+            return False
+        try:
+            self.llm_available = await self.llm_service.is_available()
+            status = "✅ dostępny" if self.llm_available else "❌ niedostępny"
+            print(f"🤖 LLM status: {status}")
+            return self.llm_available
+        except Exception:
+            self.llm_available = False
+            return False
+
     def _normalize_text(self, text: str) -> str:
-        """Normalizuje tekst do porównań."""
         import unicodedata
         text = text.lower().strip()
         text = "".join(
@@ -218,104 +329,248 @@ class NLPService:
         )
         return text.replace("?", "").replace("!", "").replace(".", "").replace(",", "").strip()
 
-    def is_small_talk(self, text: str) -> tuple[bool, str | None]:
-        """Sprawdza czy tekst to small talk."""
+    def is_small_talk(self, text: str) -> Tuple[bool, Optional[str]]:
         text_lower = text.lower().strip()
         text_norm = self._normalize_text(text_lower)
 
-        # Powitania
         if text_norm in self.GREETINGS or text_lower in self.GREETINGS:
-            return (True, 'greeting')
-
-        # Pożegnania / podziękowania
+            return True, "greeting"
         if text_norm in self.GOODBYES or text_lower in self.GOODBYES:
-            return (True, 'goodbye')
-
+            return True, "goodbye"
         if text_norm in self.THANKS or text_lower in self.THANKS:
-            return (True, 'thanks')
-
-        # Pomoc
+            return True, "thanks"
         if text_norm in self.CONFUSED or text_lower in self.CONFUSED:
-            return (True, 'help')
-
-        # Nonsens
+            return True, "help"
         if text_norm in self.NONSENSE_PATTERNS:
-            return (True, 'nonsense')
-
-        # Sprawdź czy to bardzo krótki nonsens (1-3 powtórzone litery)
-        if len(text_norm) <= 6 and len(set(text_norm.replace(' ', ''))) <= 2:
-            return (True, 'nonsense')
-
-        return (False, None)
+            return True, "nonsense"
+        if len(text_norm) <= 6 and len(set(text_norm.replace(" ", ""))) <= 2:
+            return True, "nonsense"
+        return False, None
 
     def is_cant_do_request(self, text: str) -> bool:
-        """
-        🔥 NOWE: Sprawdza czy użytkownik prosi o coś czego bot nie umie.
-        np. "zrób mi kanapkę", "wygeneruj obraz"
-        """
         text_lower = text.lower()
         words = text_lower.split()
 
         has_action = any(word in self.CANT_DO_KEYWORDS for word in words)
         has_object = any(word in self.CANT_DO_OBJECTS for word in words)
 
-        # Jeśli jest akcja + obiekt który nie jest pogodą/rzeką
         if has_action and has_object:
             return True
 
-        # Specjalne frazy
         cant_do_phrases = [
-            'zrób mi', 'zrob mi', 'wygeneruj', 'narysuj', 'namaluj',
-            'opowiedz mi', 'zaśpiewaj', 'zagraj', 'znajdź mi',
-            'kup mi', 'zamów', 'zadzwoń', 'wyślij'
+            "zrób mi", "zrob mi", "wygeneruj", "narysuj", "namaluj",
+            "opowiedz mi", "zaśpiewaj", "zagraj", "znajdź mi",
+            "kup mi", "zamów", "zadzwoń", "wyślij",
         ]
-
         for phrase in cant_do_phrases:
             if phrase in text_lower:
-                # Sprawdź czy to nie jest prośba o pogodę/hydro
                 weather_words = ['pogoda', 'pogodę', 'temperatur', 'wiatr', 'deszcz']
                 hydro_words = ['wod', 'rzek', 'stan', 'poziom']
-
                 if not any(w in text_lower for w in weather_words + hydro_words):
                     return True
+        return False
+
+    def is_forecast_request(self, text: str) -> bool:
+        """Sprawdza czy użytkownik pyta o prognozę."""
+        text_lower = text.lower()
+
+        forecast_phrases = [
+            'jutro', 'pojutrze', 'za tydzień', 'za tydzien',
+            'w weekend', 'w sobotę', 'w sobote', 'w niedzielę', 'w niedziele',
+            'w poniedziałek', 'w poniedzialek', 'we wtorek', 'w środę', 'w srode',
+            'w czwartek', 'w piątek', 'w piatek',
+            'za godzinę', 'za godzine', 'za 2 godziny', 'za dwie godziny',
+            'wieczorem', 'rano', 'w nocy', 'po południu', 'po poludniu',
+            'prognoza na', 'będzie padać', 'bedzie padac',
+            'czy będzie', 'czy bedzie', 'będzie wiało', 'bedzie wialo',
+            'w przyszłym tygodniu', 'w przyszlym tygodniu',
+            'na tydzień', 'na tydzien', 'na weekend',
+            'przewidywana', 'spodziewana',
+        ]
+
+        for phrase in forecast_phrases:
+            if phrase in text_lower:
+                return True
+        return False
+
+    def is_station_list_request(self, text: str) -> bool:
+        """Sprawdza czy użytkownik pyta o listę stacji."""
+        text_lower = text.lower()
+
+        list_phrases = [
+            'lista stacji', 'liste stacji', 'listę stacji',
+            'jakie stacje', 'które stacje', 'ktore stacje',
+            'wszystkie stacje', 'dostępne stacje', 'dostepne stacje',
+            'lista wodowskazów', 'liste wodowskazow',
+            'jakie wodowskazy', 'wszystkie wodowskazy',
+            'punkty pomiarowe', 'lista punktów',
+            'pokaż stacje', 'pokaz stacje',
+            'wymień stacje', 'wymien stacje',
+        ]
+
+        for phrase in list_phrases:
+            if phrase in text_lower:
+                return True
+
+        words = set(text_lower.split())
+        list_words = {'lista', 'listę', 'liste', 'jakie', 'które', 'ktore', 'wszystkie', 'pokaz', 'pokaż', 'wymień',
+                      'wymien'}
+        station_words = {'stacje', 'stacji', 'wodowskazy', 'wodowskazów', 'punkty', 'punktów'}
+
+        if list_words & words and station_words & words:
+            return True
 
         return False
 
-    def _lemmatize_text(self, text: str) -> list[str]:
-        """Zamienia tekst na listę lemmatów."""
+    def is_county_list_request(self, text: str) -> bool:
+        """🔥 Sprawdza czy użytkownik pyta o listę powiatów z ostrzeżeń."""
+        text_lower = text.lower()
+
+        # Frazy bezpośrednie
+        county_phrases = [
+            'podaj powiaty', 'pokaż powiaty', 'pokaz powiaty',
+            'lista powiatów', 'lista powiatow', 'listę powiatów',
+            'jakie powiaty', 'które powiaty', 'ktore powiaty',
+            'wszystkie powiaty', 'pełna lista', 'pelna lista',
+            'więcej powiatów', 'wiecej powiatow',
+            'pozostałe powiaty', 'pozostale powiaty',
+            'dla jakich powiatów', 'dla jakich powiatow',
+            'gdzie obowiązuje', 'gdzie obowiazuje',
+            'gdzie jest ostrzeżenie', 'gdzie jest ostrzezenie',
+            'gdzie są ostrzeżenia', 'gdzie sa ostrzezenia',
+            'dotknięte powiaty', 'dotkniete powiaty',
+            'objęte powiaty', 'objete powiaty',
+            'w których powiatach', 'w ktorych powiatach',
+            'wymień powiaty', 'wymien powiaty',
+        ]
+
+        for phrase in county_phrases:
+            if phrase in text_lower:
+                return True
+
+        # Kombinacje słów
+        words = set(text_lower.split())
+        action_words = {'podaj', 'pokaż', 'pokaz', 'lista', 'listę', 'liste',
+                        'jakie', 'które', 'ktore', 'wszystkie', 'wymień', 'wymien',
+                        'pełna', 'pelna', 'więcej', 'wiecej', 'pozostałe', 'pozostale'}
+        county_words = {'powiaty', 'powiatów', 'powiatow', 'powiat', 'powiatach'}
+
+        if action_words & words and county_words & words:
+            return True
+
+        # Samo "powiaty" jako kontynuacja rozmowy
+        if text_lower.strip() in ['powiaty', 'powiatów', 'powiatow', 'które', 'ktore', 'jakie']:
+            return True
+
+        return False
+
+    def _lemmatize_text(self, text: str) -> List[str]:
         if not self.nlp:
             return text.lower().split()
-
         doc = self.nlp(text)
         return [token.lemma_.lower() for token in doc if not token.is_punct]
 
-    def recognize_intent(self, text: str) -> str | None:
-        """Rozpoznaje intencję."""
-        # Sprawdź small talk
+    async def recognize_intent_async(self, text: str) -> Tuple[Optional[str], Dict]:
+        # 1. Small talk
         is_st, st_type = self.is_small_talk(text)
         if is_st:
-            print(f"🔍 NLP: Small talk ({st_type})")
-            return None
+            return None, {"source": "small_talk", "type": st_type}
 
-        # 🔥 Sprawdź czy to prośba o coś czego nie umiemy
+        # 2. Prośby spoza funkcji bota
         if self.is_cant_do_request(text):
-            print(f"🔍 NLP: Can't do request")
-            return None
+            return None, {"source": "cant_do"}
 
+        # 3. Pytanie o prognozę
+        if self.is_forecast_request(text):
+            return "forecast_unavailable", {"source": "rules"}
+
+        # 🔥 4. Pytanie o listę powiatów (NOWE!)
+        if self.is_county_list_request(text):
+            return "warnings_powiaty", {"source": "rules"}
+
+        # 5. Pytanie o listę stacji
+        if self.is_station_list_request(text):
+            return "hydro_lista", {"source": "rules"}
+
+        # 6. Próbuj LLM jeśli dostępny
+        llm_intent = None
+        llm_conf = 0.0
+        llm_entities = {}
+
+        if self.use_llm and self.llm_service and self.llm_available:
+            try:
+                llm_result = await self.llm_service.classify_intent(text)
+                llm_intent = llm_result.get("intent")
+                llm_conf = float(llm_result.get("confidence", 0.0) or 0.0)
+                llm_entities = llm_result.get("entities", {}) or {}
+
+                if llm_intent and llm_conf >= 0.5:
+                    print(f"🤖 LLM: '{text}' → {llm_intent} (conf: {llm_conf:.2f})")
+                else:
+                    llm_intent = None
+            except Exception as e:
+                print(f"⚠️ LLM error: {e}")
+                llm_intent = None
+
+        # 7. Reguły
+        rules_intent = self._recognize_intent_rules(text)
+
+        # Logika wyboru
+        if llm_intent and llm_conf >= 0.7:
+            return llm_intent, {
+                "source": "llm",
+                "confidence": llm_conf,
+                "entities": llm_entities,
+            }
+
+        if llm_intent and rules_intent and rules_intent != llm_intent and 0.5 <= llm_conf < 0.7:
+            return rules_intent, {"source": "rules"}
+
+        if llm_intent and llm_conf >= 0.5 and not rules_intent:
+            return llm_intent, {
+                "source": "llm",
+                "confidence": llm_conf,
+                "entities": llm_entities,
+            }
+
+        return rules_intent, {"source": "rules"}
+
+    def recognize_intent(self, text: str) -> Optional[str]:
+        is_st, _ = self.is_small_talk(text)
+        if is_st:
+            return None
+        if self.is_cant_do_request(text):
+            return None
+        if self.is_forecast_request(text):
+            return "forecast_unavailable"
+        if self.is_county_list_request(text):
+            return "warnings_powiaty"
+        if self.is_station_list_request(text):
+            return "hydro_lista"
+        return self._recognize_intent_rules(text)
+
+    def _recognize_intent_rules(self, text: str) -> Optional[str]:
         lemmas = self._lemmatize_text(text)
         text_lower = text.lower()
 
-        # Bonus za rzekę
-        river_bonus = 0
+        water_body_bonus = 0
         for river in self.KNOWN_RIVERS:
             if river in text_lower:
-                river_bonus = 3
+                water_body_bonus = 3
+                break
+        for lake in self.KNOWN_LAKES:
+            if lake in text_lower:
+                water_body_bonus = 3
+                break
+        for baltic in self.BALTIC_KEYWORDS:
+            if baltic in text_lower:
+                water_body_bonus = 3
                 break
 
         scores = defaultdict(float)
 
-        if river_bonus > 0:
-            scores['hydro'] += river_bonus
+        if water_body_bonus > 0:
+            scores["hydro"] += water_body_bonus
 
         for word in lemmas:
             for intent, keywords in self.KEYWORDS.items():
@@ -328,7 +583,7 @@ class NLPService:
                 if bigram in bigram_list:
                     scores[intent] += 3.0
 
-        print(f"🔍 NLP: '{text}' → {dict(scores)}")
+        print(f"🔍 Rules: '{text}' → {dict(scores)}")
 
         if not scores:
             return None
@@ -339,66 +594,173 @@ class NLPService:
         if max_score < 2.0:
             return None
 
-        # Rozstrzyganie remisów
-        if abs(scores.get('hydro', 0) - scores.get('pogoda', 0)) < 1.0:
-            if any(word in lemmas for word in ['woda', 'rzeka', 'poziom', 'wodowskaz']):
-                return 'hydro'
-            if river_bonus > 0:
-                return 'hydro'
+        if abs(scores.get("hydro", 0) - scores.get("pogoda", 0)) < 1.0:
+            if any(word in lemmas for word in ["woda", "rzeka", "poziom", "wodowskaz", "jezioro", "morze"]):
+                return "hydro"
+
+        if water_body_bonus > 0:
+            return "hydro"
 
         return best_intent
 
-    def extract_entities(self, text: str) -> dict[str, list[str]]:
-        """Wyciąga nazwy geograficzne z tekstu."""
-        locations = {'placeName': [], 'geogName': []}
+    def extract_entities(self, text: str) -> Dict[str, List[str]]:
+        locations = {"placeName": [], "geogName": []}
         text_lower = text.lower()
 
-        # Szukaj województw
+        for region in self.REGIONS:
+            if region in text_lower:
+                if region not in locations["geogName"]:
+                    locations["geogName"].append(region)
+
         for voivodeship in self.VOIVODESHIPS:
             if voivodeship in text_lower:
-                if voivodeship not in locations['geogName']:
-                    locations['geogName'].append(voivodeship)
-        # Szukaj znanych rzek
+                if voivodeship not in locations["geogName"]:
+                    locations["geogName"].append(voivodeship)
+
         for river in self.KNOWN_RIVERS:
             if river in text_lower:
                 base = self._get_river_base_form(river)
-                if base and base not in locations['geogName']:
-                    locations['geogName'].append(base)
+                if base and base not in locations["geogName"]:
+                    locations["geogName"].append(base)
 
-        # spaCy NER
+        for lake in self.KNOWN_LAKES:
+            if lake in text_lower:
+                if lake not in locations["geogName"]:
+                    locations["geogName"].append(lake)
+
+        for baltic in self.BALTIC_KEYWORDS:
+            if baltic in text_lower:
+                if "bałtyk" not in locations["geogName"] and "baltyk" not in locations["geogName"]:
+                    locations["geogName"].append("bałtyk")
+                break
+
         if self.nlp:
             doc = self.nlp(text)
             for ent in doc.ents:
                 name = ent.lemma_ if ent.lemma_ else ent.text
                 name = name.strip()
-
-                if name.lower() in [r.lower() for r in locations['geogName']]:
+                if name.lower() in [r.lower() for r in locations["geogName"]]:
                     continue
-
-                if ent.label_ == 'placeName':
-                    if name not in locations['placeName']:
-                        locations['placeName'].append(name)
-                elif ent.label_ == 'geogName':
-                    if name not in locations['geogName']:
-                        locations['geogName'].append(name)
+                if ent.label_ == "placeName":
+                    if name not in locations["placeName"]:
+                        locations["placeName"].append(name)
+                elif ent.label_ == "geogName":
+                    if name not in locations["geogName"]:
+                        locations["geogName"].append(name)
 
         return locations
 
     def _get_river_base_form(self, river: str) -> str:
         RIVER_LEMMAS = {
-            'wiśle': 'wisła', 'wisle': 'wisła', 'wisły': 'wisła',
-            'wisly': 'wisła', 'wisla': 'wisła',
-            'sanie': 'san', 'sanu': 'san',
-            'odrze': 'odra', 'odry': 'odra',
-            'warcie': 'warta', 'warty': 'warta',
-            'narwi': 'narew', 'narwią': 'narew',
-            'bugu': 'bug', 'bugiem': 'bug',
-            'noteci': 'noteć', 'notec': 'noteć',
-            'pilicy': 'pilica', 'dunajcu': 'dunajec',
-            'nysie': 'nysa', 'nysy': 'nysa',
-            'bobrze': 'bóbr', 'bobr': 'bóbr',
-            'wieprza': 'wieprz', 'brdzie': 'brda',
-            'gwdzie': 'gwda', 'biebrzy': 'biebrza',
-            'nerze': 'ner',
+            "wiśle": "wisła", "wisle": "wisła", "wisły": "wisła",
+            "wisly": "wisła", "wisla": "wisła",
+            "sanie": "san", "sanu": "san",
+            "odrze": "odra", "odry": "odra",
+            "warcie": "warta", "warty": "warta",
+            "narwi": "narew", "narwią": "narew",
+            "bugu": "bug", "bugiem": "bug",
+            "noteci": "noteć", "notec": "noteć",
+            "pilicy": "pilica", "dunajcu": "dunajec",
+            "nysie": "nysa", "nysy": "nysa",
+            "bobrze": "bóbr", "bobr": "bóbr",
+            "wieprza": "wieprz", "brdzie": "brda",
+            "gwdzie": "gwda", "biebrzy": "biebrza",
+            "nerze": "ner",
         }
         return RIVER_LEMMAS.get(river.lower(), river.lower())
+
+    def extract_voivodeship(self, text: str) -> str | None:
+        """🔥 Wyciąga województwo z tekstu (z obsługą literówek i słów pisanych razem)."""
+        text_lower = text.lower()
+
+        # 🔥 Słowa pisane razem → województwa
+        merged_words = {
+            'dolnymmazowieckim': 'mazowieckie',
+            'namazowszu': 'mazowieckie',
+            'wmazowieckim': 'mazowieckie',
+            'dolnyslaskim': 'dolnoslaskie',
+            'nadolnymslasku': 'dolnoslaskie',
+            'wdolnoslaskim': 'dolnoslaskie',
+            'wmalopolskim': 'malopolskie',
+            'wmalopolsce': 'malopolskie',
+            'wwielkopolskim': 'wielkopolskie',
+            'wwielkopolsce': 'wielkopolskie',
+            'wslaskim': 'slaskie',
+            'naslasku': 'slaskie',
+            'warminskomazurskim': 'warminsko-mazurskie',
+            'wwarminskomazurskim': 'warminsko-mazurskie',
+            'kujawskopomorskim': 'kujawsko-pomorskie',
+            'wkujawskopomorskim': 'kujawsko-pomorskie',
+            'wlubelskim': 'lubelskie',
+            'nalubelszczyznie': 'lubelskie',
+            'wpodlaskim': 'podlaskie',
+            'napodlasiu': 'podlaskie',
+            'wpomorskim': 'pomorskie',
+            'napomorzu': 'pomorskie',
+        }
+
+        for merged, voiv in merged_words.items():
+            if merged in text_lower.replace(' ', ''):
+                return voiv
+
+        # Sprawdź wszystkie warianty z myślnikami
+        voivodeship_patterns = {
+            'warminsko-mazurskie': 'warminsko-mazurskie',
+            'warminsko mazurskie': 'warminsko-mazurskie',
+            'warmińsko-mazurskie': 'warminsko-mazurskie',
+            'warmińsko mazurskie': 'warminsko-mazurskie',
+            'kujawsko-pomorskie': 'kujawsko-pomorskie',
+            'kujawsko pomorskie': 'kujawsko-pomorskie',
+            'zachodnio-pomorskie': 'zachodniopomorskie',
+            'zachodnio pomorskie': 'zachodniopomorskie',
+        }
+
+        for pattern, normalized in voivodeship_patterns.items():
+            if pattern in text_lower:
+                return normalized
+
+        # Sprawdź standardowe województwa
+        for voiv in self.VOIVODESHIPS:
+            if voiv in text_lower:
+                return voiv
+
+        return None
+
+    def has_multiple_intents(self, text: str) -> bool:
+        """
+        Sprawdza czy użytkownik pyta o wiele rzeczy naraz.
+        np. "Pogoda i ostrzeżenia Warszawa"
+        """
+        text_lower = text.lower()
+
+        # Słowa łączące
+        connectors = [' i ', ' oraz ', ' a także ', ' plus ', ' a ']
+
+        has_connector = any(c in text_lower for c in connectors)
+
+        if not has_connector:
+            return False
+
+        # Sprawdź czy są słowa z RÓŻNYCH intencji
+        pogoda_words = {'pogoda', 'pogode', 'pogody', 'temperatura', 'temperatury',
+                        'wiatr', 'wiatru', 'deszcz', 'deszczu', 'stopni', 'cieplo', 'zimno'}
+        hydro_words = {'woda', 'wody', 'wodzie', 'rzeka', 'rzeki', 'stan', 'stanu',
+                       'poziom', 'poziomu', 'wisla', 'wisła', 'odra', 'warta'}
+        alert_words = {'ostrzezenia', 'ostrzeżenia', 'ostrzezenie', 'ostrzeżenie',
+                       'alerty', 'alert', 'burza', 'burze', 'zagrozenie', 'zagrożenie'}
+
+        words = set(text_lower.split())
+
+        # Sprawdź ile kategorii intencji jest w tekście
+        has_pogoda = bool(words & pogoda_words)
+        has_hydro = bool(words & hydro_words)
+        has_alert = bool(words & alert_words)
+
+        # Jeśli są słowa z więcej niż jednej kategorii = wiele intencji
+        intent_count = sum([has_pogoda, has_hydro, has_alert])
+
+        if intent_count >= 2:
+            print(f"   ⚠️ Wykryto wiele intencji: pogoda={has_pogoda}, hydro={has_hydro}, alert={has_alert}")
+            return True
+
+        return False
